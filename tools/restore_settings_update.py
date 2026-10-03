@@ -72,8 +72,41 @@ private fun SettingsScreen(historyItems: List<HistoryItem>, onClear: () -> Unit,
     }
 }'''
 
-if old not in text:
-    raise SystemExit("Expected SettingsScreen block was not found; no changes made.")
+if old in text:
+    text = text.replace(old, new, 1)
 
-path.write_text(text.replace(old, new, 1), encoding="utf-8")
-print("SettingsScreen updated")
+# Browser-style back: Android back should traverse WebView history before leaving Browser.
+old_call = '''"Browser" -> BrowserScreen(browserUrl, { address = it; browserUrl = it; saveHistory(it) }, { showDownload(it) }, { browserUrl = it; address = it }, { scope.launch { drawerState.open() } })'''
+new_call = '''"Browser" -> BrowserScreen(browserUrl, { address = it; browserUrl = it; saveHistory(it) }, { showDownload(it) }, { browserUrl = it; address = it }, { scope.launch { drawerState.open() } }, { screen = "Home" })'''
+if old_call in text and new_call not in text:
+    text = text.replace(old_call, new_call, 1)
+
+old_sig = '''    onUrlChange: (String) -> Unit,
+    onMenu: () -> Unit
+) {'''
+new_sig = '''    onUrlChange: (String) -> Unit,
+    onMenu: () -> Unit,
+    onExit: () -> Unit
+) {'''
+if old_sig in text and 'onExit: () -> Unit' not in text:
+    text = text.replace(old_sig, new_sig, 1)
+
+anchor = '''    var field by remember(initialUrl) { mutableStateOf(TextFieldValue(initialUrl, TextRange(initialUrl.length))) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
+
+    Column(Modifier.fillMaxSize()) {'''
+replacement = '''    var field by remember(initialUrl) { mutableStateOf(TextFieldValue(initialUrl, TextRange(initialUrl.length))) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
+
+    // Browser-style back: keep navigation inside the WebView while history exists.
+    BackHandler(enabled = true) {
+        val view = webView
+        if (view != null && view.canGoBack()) view.goBack() else onExit()
+    }
+
+    Column(Modifier.fillMaxSize()) {'''
+if anchor in text and 'Browser-style back: keep navigation inside the WebView' not in text:
+    text = text.replace(anchor, replacement, 1)
+
+path.write_text(text, encoding="utf-8")
+print("Settings update and browser back fixes applied")
