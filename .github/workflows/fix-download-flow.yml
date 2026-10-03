@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   patch-download-flow:
-    if: !contains(github.event.head_commit.message, '[pdm-flow-patched]')
+    if: ${{ !contains(github.event.head_commit.message, '[pdm-flow-patched]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
