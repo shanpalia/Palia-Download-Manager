@@ -311,7 +311,7 @@ private fun PdmApp(
                     when (screen) {
                         "Home" -> HomeScreen(address, { address = it }, { goFromAddress(address) }, { showDownload(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent) { scope.launch { drawerState.open() } }
                         "Downloads" -> DownloadsScreen(context) { scope.launch { drawerState.open() } }
-                        "Browser" -> BrowserScreen(browserUrl, { address = it; browserUrl = it; saveHistory(it) }, { showDownload(it) }, { browserUrl = it; address = it }, { scope.launch { drawerState.open() } })
+                        "Browser" -> BrowserScreen(browserUrl, { address = it; browserUrl = it; saveHistory(it) }, { showDownload(it) }, { browserUrl = it; address = it }, { scope.launch { drawerState.open() } }, { screen = "Home" })
                         else -> SettingsScreen(historyItems, { history.clear(); historyItems = emptyList() }, onStorageSettings) { scope.launch { drawerState.open() } }
                     }
                 }
@@ -472,10 +472,17 @@ private fun BrowserScreen(
     onUrlSaved: (String) -> Unit,
     onDownload: (String) -> Unit,
     onUrlChange: (String) -> Unit,
-    onMenu: () -> Unit
+    onMenu: () -> Unit,
+    onExit: () -> Unit
 ) {
     var field by remember(initialUrl) { mutableStateOf(TextFieldValue(initialUrl, TextRange(initialUrl.length))) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+
+    // Browser-style back: keep navigation inside the WebView while history exists.
+    BackHandler(enabled = true) {
+        val view = webView
+        if (view != null && view.canGoBack()) view.goBack() else onExit()
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
