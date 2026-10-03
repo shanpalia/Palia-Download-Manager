@@ -271,6 +271,7 @@ private fun PdmApp(
             Box(Modifier.fillMaxSize().padding(pad)) {
                 when (selected) {
                     "Home" -> HomeScreen(
+                        context = context,
                         url = url,
                         onUrl = { url = it },
                         onGo = { openLink(url) },
@@ -340,6 +341,7 @@ private fun PdmApp(
 
 @Composable
 private fun HomeScreen(
+    context: Context,
     url: String,
     onUrl: (String) -> Unit,
     onGo: () -> Unit,
@@ -373,7 +375,7 @@ private fun HomeScreen(
                         trailingIcon = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (field.text.isNotBlank()) IconButton({ field = TextFieldValue(""); onUrl("") }) { Icon(Icons.Default.Clear, "Clear") }
-                                TextButton({ val clip = readClipboard(context = null); if (clip.isNotBlank()) { field = TextFieldValue(clip, TextRange(clip.length)); onUrl(clip) } }) { Text("PASTE") }
+                                TextButton({ val clip = readClipboard(context); if (clip.isNotBlank()) { field = TextFieldValue(clip, TextRange(clip.length)); onUrl(clip) } }) { Text("PASTE") }
                                 FilledIconButton(onClick = onGo, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)) { Icon(Icons.Default.ArrowForward, "Go", tint = Color.White) }
                             }
                         }
@@ -435,7 +437,7 @@ private fun HomeScreen(
             Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp), colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(4.dp), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(8.dp)) {
                     Text("Recent history", Modifier.padding(10.dp), fontWeight = FontWeight.Bold, color = Dark)
-                    historyItems.take(8).forEach { item -> TextButton({ address = TextFieldValue(item.url, TextRange(item.url.length)); onOpen(item.url); showHistory = false }, Modifier.fillMaxWidth()) { Text(item.url, maxLines = 1, color = Dark) } }
+                    historyItems.take(8).forEach { item -> TextButton({ address = TextFieldValue(item.url, TextRange(item.url.length)); onOpen(item.url); showHistory = false }, Modifier.fillMaxWidth()) { Text(item.url, maxLines = 1, color = Dark) }
                 }
             }
         }
