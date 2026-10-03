@@ -4,9 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -14,12 +14,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
- * Simple bottom-navigation item that does not depend on Material3's
- * NavigationBarItem API or the Compose RowScope.weight extension.
- * Four items each receive 25% of the available NavigationBar width.
+ * Bottom-navigation item used inside Material3 NavigationBar.
+ * RowScope.weight keeps all four items at equal width and prevents
+ * the labels from being squeezed into vertical columns.
  */
 @Composable
-fun PdmNavigationBarItem(
+fun RowScope.PdmNavigationBarItem(
     selected: Boolean,
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
@@ -27,8 +27,7 @@ fun PdmNavigationBarItem(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxWidth(0.25f)
-            .fillMaxHeight()
+            .weight(1f)
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -36,8 +35,10 @@ fun PdmNavigationBarItem(
     ) {
         Column(
             modifier = Modifier
-                .background(if (selected) Color(0xFFE9DDFB) else Color.Transparent)
-                .padding(horizontal = 6.dp, vertical = 5.dp),
+                .background(
+                    if (selected) Color(0xFFE9DDFB) else Color.Transparent
+                )
+                .padding(horizontal = 22.dp, vertical = 5.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             icon()
