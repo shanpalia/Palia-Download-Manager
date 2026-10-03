@@ -73,7 +73,6 @@ private class HistoryStore(context: Context) {
 class MainActivity : ComponentActivity() {
     private var pendingDownload: String? = null
     private var waitingForStorage = false
-
     private val torrentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@registerForActivityResult
         try {
@@ -82,71 +81,26 @@ class MainActivity : ComponentActivity() {
             startDownloadService(DownloadService.ACTION_TORRENT_FILE, null, target.absolutePath)
         } catch (_: Throwable) { }
     }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            PdmApp(
-                activity = this,
-                incomingUrl = extractIncoming(intent),
-                onDownload = ::startUrlDownload,
-                onPickTorrent = { torrentPicker.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")) },
-                onStorageSettings = ::openStorageSettings,
-                requestStorage = ::requestStorageAndDownload
-            )
-        }
+        setContent { PdmApp(this, extractIncoming(intent), ::startUrlDownload, { torrentPicker.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")) }, ::openStorageSettings, ::requestStorageAndDownload) }
     }
-
     override fun onResume() {
         super.onResume()
-        if (waitingForStorage && PdmStorage.hasPublicAccess()) {
-            waitingForStorage = false
-            pendingDownload?.let { pendingDownload = null; startUrlDownload(it) }
-        }
+        if (waitingForStorage && PdmStorage.hasPublicAccess()) { waitingForStorage = false; pendingDownload?.let { pendingDownload = null; startUrlDownload(it) } }
     }
-
     private fun requestStorageAndDownload(url: String) { pendingDownload = url; waitingForStorage = true; openStorageSettings() }
-
-    private fun extractIncoming(i: Intent?): String? = when {
-        i?.action == Intent.ACTION_SEND -> i.getStringExtra(Intent.EXTRA_TEXT)
-        else -> i?.data?.takeIf { it.scheme.equals("http", true) || it.scheme.equals("https", true) || it.scheme.equals("magnet", true) }?.toString()
-    }
-
+    private fun extractIncoming(i: Intent?): String? = when { i?.action == Intent.ACTION_SEND -> i.getStringExtra(Intent.EXTRA_TEXT); else -> i?.data?.takeIf { it.scheme.equals("http", true) || it.scheme.equals("https", true) || it.scheme.equals("magnet", true) }?.toString() }
     private fun startUrlDownload(value: String) {
         val url = value.trim(); if (url.isBlank()) return
-        when {
-            url.startsWith("magnet:", true) -> startDownloadService(DownloadService.ACTION_TORRENT_MAGNET, url, null)
-            isTorrentUrl(url) -> startDownloadService(DownloadService.ACTION_TORRENT_URL, url, null)
-            url.startsWith("http://", true) || url.startsWith("https://", true) -> startDownloadService(DownloadService.ACTION_HTTP, url, null)
-        }
+        when { url.startsWith("magnet:", true) -> startDownloadService(DownloadService.ACTION_TORRENT_MAGNET, url, null); isTorrentUrl(url) -> startDownloadService(DownloadService.ACTION_TORRENT_URL, url, null); url.startsWith("http://", true) || url.startsWith("https://", true) -> startDownloadService(DownloadService.ACTION_HTTP, url, null) }
     }
-
-    private fun startDownloadService(action: String, url: String?, path: String?) {
-        val i = Intent(this, DownloadService::class.java).apply {
-            this.action = action
-            if (url != null) putExtra(DownloadService.EXTRA_URL, url)
-            if (path != null) putExtra(DownloadService.EXTRA_PATH, path)
-        }
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
-    }
-
-    private fun openStorageSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) }
-            catch (_: Throwable) { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
-        }
-    }
+    private fun startDownloadService(action: String, url: String?, path: String?) { val i = Intent(this, DownloadService::class.java).apply { this.action = action; if (url != null) putExtra(DownloadService.EXTRA_URL, url); if (path != null) putExtra(DownloadService.EXTRA_PATH, path) }; if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i) }
+    private fun openStorageSettings() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { try { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) } catch (_: Throwable) { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } } }
 }
 
 @Composable
-private fun PdmApp(
-    activity: ComponentActivity,
-    incomingUrl: String?,
-    onDownload: (String) -> Unit,
-    onPickTorrent: () -> Unit,
-    onStorageSettings: () -> Unit,
-    requestStorage: (String) -> Unit
-) {
+private fun PdmApp(activity: ComponentActivity, incomingUrl: String?, onDownload: (String) -> Unit, onPickTorrent: () -> Unit, onStorageSettings: () -> Unit, requestStorage: (String) -> Unit) {
     val context = activity
     val history = remember(context) { HistoryStore(context) }
     var historyItems by remember { mutableStateOf(history.all()) }
@@ -159,224 +113,85 @@ private fun PdmApp(
     var exitDialog by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
-
-    fun finishPermissionFlow() {
-        permissionStep = 0
-        permissionsReady = true
-        incomingUrl?.let {
-            history.add(it)
-            historyItems = history.all()
-            address = it
-            screen = "Downloads"
-            onDownload(it)
-        }
-    }
-
-    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) permissionStep = 2
-        else finishPermissionFlow()
-    }
-
-    LaunchedEffect(Unit) {
-        delay(1200)
-        splash = false
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) permissionStep = 1
-        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) permissionStep = 2
-        else finishPermissionFlow()
-    }
-
-    LaunchedEffect(permissionStep) {
-        if (permissionStep == 2) {
-            while (true) {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || PdmStorage.hasPublicAccess()) {
-                    finishPermissionFlow()
-                    break
-                }
-                delay(400)
-            }
-        }
-    }
-
-    BackHandler(enabled = !splash) {
-        if (permissionStep != 0) return@BackHandler
-        if (drawerState.isOpen) { drawerScope.launch { drawerState.close() }; return@BackHandler }
-        when (screen) { "Home" -> exitDialog = true; else -> screen = "Home" }
-    }
-
+    fun finishPermissionFlow() { permissionStep = 0; permissionsReady = true; incomingUrl?.let { history.add(it); historyItems = history.all(); address = it; screen = "Downloads"; onDownload(it) } }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) permissionStep = 2 else finishPermissionFlow() }
+    LaunchedEffect(Unit) { delay(1200); splash = false; if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) permissionStep = 1 else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) permissionStep = 2 else finishPermissionFlow() }
+    LaunchedEffect(permissionStep) { if (permissionStep == 2) while (true) { if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || PdmStorage.hasPublicAccess()) { finishPermissionFlow(); break }; delay(400) } }
+    BackHandler(enabled = !splash) { if (permissionStep != 0) return@BackHandler; if (drawerState.isOpen) { drawerScope.launch { drawerState.close() }; return@BackHandler }; when (screen) { "Home" -> exitDialog = true; else -> screen = "Home" } }
     fun saveHistory(v: String) { history.add(v); historyItems = history.all() }
-    fun requestDownloadNow(v: String) {
-        val url = v.trim(); if (url.isBlank()) return
-        saveHistory(url); screen = "Downloads"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) requestStorage(url) else onDownload(url)
-    }
-    fun submitAddress(v: String) {
-        val url = v.trim(); if (url.isBlank()) return
-        address = url
-        if (url.startsWith("magnet:", true) || url.startsWith("http://", true) || url.startsWith("https://", true)) requestDownloadNow(url)
-        else { browserUrl = "https://www.google.com/search?q=${Uri.encode(url)}"; screen = "Browser" }
-    }
+    fun requestDownloadNow(v: String) { val url = v.trim(); if (url.isBlank()) return; saveHistory(url); screen = "Downloads"; if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) requestStorage(url) else onDownload(url) }
+    fun submitAddress(v: String) { val url = v.trim(); if (url.isBlank()) return; address = url; if (url.startsWith("magnet:", true) || url.startsWith("http://", true) || url.startsWith("https://", true)) requestDownloadNow(url) else { browserUrl = "https://www.google.com/search?q=${Uri.encode(url)}"; screen = "Browser" } }
     fun openRecent(url: String) { address = url; browserUrl = url; screen = "Browser"; drawerScope.launch { drawerState.close() } }
-
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Color.White, surface = Color.White)) {
         if (splash) { SplashScreen(); return@MaterialTheme }
-        if (!permissionsReady || permissionStep != 0) {
-            PermissionScreen(
-                step = permissionStep,
-                onNotification = { if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else permissionStep = 2 },
-                onStorage = onStorageSettings,
-                onSkip = {
-                    if (permissionStep == 1) permissionStep = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) 2 else { finishPermissionFlow(); 0 }
-                    else finishPermissionFlow()
-                }
-            )
-            return@MaterialTheme
-        }
-
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            gesturesEnabled = true,
-            drawerContent = {
-                ModalDrawerSheet(drawerContainerColor = Color.White) {
-                    Column(Modifier.fillMaxHeight().padding(top = 8.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Default.Close, "Close menu") }
-                            Icon(Icons.Default.Download, null, Modifier.size(34.dp), tint = Green)
-                            Spacer(Modifier.width(10.dp))
-                            Column { Text("Palia Download Manager", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("Recent tabs", color = Muted, fontSize = 13.sp) }
-                        }
-                        HorizontalDivider()
-                        Text("RECENT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Muted, modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 8.dp))
-                        if (historyItems.isEmpty()) Text("No recent tabs", color = Muted, modifier = Modifier.padding(20.dp))
-                        else LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) { items(historyItems.take(30), key = { it.url }) { item -> NavigationDrawerItem(icon = { Icon(Icons.Default.Language, null) }, label = { Text(item.url, maxLines = 2, overflow = TextOverflow.Ellipsis) }, selected = false, onClick = { openRecent(item.url) }, modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)) } }
-                        Spacer(Modifier.weight(1f))
-                        NavigationDrawerItem(icon = { Icon(Icons.Default.DeleteSweep, null) }, label = { Text("Clear recent") }, selected = false, onClick = { history.clear(); historyItems = emptyList() }, modifier = Modifier.padding(10.dp))
-                    }
-                }
-            }
-        ) {
-            Scaffold(containerColor = Color.White, bottomBar = { NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) { NavItem("Home", Icons.Default.Home, screen == "Home") { screen = "Home" }; NavItem("Downloads", Icons.Default.Download, screen == "Downloads") { screen = "Downloads" }; NavItem("Browser", Icons.Default.Web, screen == "Browser") { screen = "Browser" }; NavItem("Settings", Icons.Default.Settings, screen == "Settings") { screen = "Settings" } } }) { padding ->
-                Box(Modifier.fillMaxSize().padding(padding)) {
-                    when (screen) {
-                        "Home" -> HomeScreen(context, address, { address = it }, { submitAddress(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent, { requestDownloadNow(address) }, { drawerScope.launch { drawerState.open() } })
-                        "Downloads" -> DownloadsScreen(context) { drawerScope.launch { drawerState.open() } }
-                        "Browser" -> BrowserScreen(context, browserUrl, { saveHistory(it) }, { requestDownloadNow(it) }, { browserUrl = it }, { drawerScope.launch { drawerState.open() } })
-                        else -> SettingsScreen(historyItems, { history.clear(); historyItems = emptyList() }, onStorageSettings) { drawerScope.launch { drawerState.open() } }
-                    }
-                }
-            }
+        if (!permissionsReady || permissionStep != 0) { PermissionScreen(permissionStep, { if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else permissionStep = 2 }, onStorageSettings, { if (permissionStep == 1) permissionStep = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) 2 else { finishPermissionFlow(); 0 } else finishPermissionFlow() }); return@MaterialTheme }
+        ModalNavigationDrawer(drawerState = drawerState, gesturesEnabled = true, drawerContent = { ModalDrawerSheet(drawerContainerColor = Color.White) { Column(Modifier.fillMaxHeight().padding(top = 8.dp)) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Default.Close, "Close menu") }; Icon(Icons.Default.Download, null, Modifier.size(34.dp), tint = Green); Spacer(Modifier.width(10.dp)); Column { Text("Palia Download Manager", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("Recent tabs", color = Muted, fontSize = 13.sp) } }; HorizontalDivider(); Text("RECENT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Muted, modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 8.dp)); if (historyItems.isEmpty()) Text("No recent tabs", color = Muted, modifier = Modifier.padding(20.dp)) else LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) { items(historyItems.take(30), key = { it.url }) { item -> NavigationDrawerItem(icon = { Icon(Icons.Default.Language, null) }, label = { Text(item.url, maxLines = 2, overflow = TextOverflow.Ellipsis) }, selected = false, onClick = { openRecent(item.url) }, modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)) } }; Spacer(Modifier.weight(1f)); NavigationDrawerItem(icon = { Icon(Icons.Default.DeleteSweep, null) }, label = { Text("Clear recent") }, selected = false, onClick = { history.clear(); historyItems = emptyList() }, modifier = Modifier.padding(10.dp)) } } }) {
+            Scaffold(containerColor = Color.White, bottomBar = { NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) { NavItem("Home", Icons.Default.Home, screen == "Home") { screen = "Home" }; NavItem("Downloads", Icons.Default.Download, screen == "Downloads") { screen = "Downloads" }; NavItem("Browser", Icons.Default.Web, screen == "Browser") { screen = "Browser" }; NavItem("Settings", Icons.Default.Settings, screen == "Settings") { screen = "Settings" } } }) { padding -> Box(Modifier.fillMaxSize().padding(padding)) { when (screen) { "Home" -> HomeScreen(context, address, { address = it }, { submitAddress(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent, { requestDownloadNow(address) }, { drawerScope.launch { drawerState.open() } }); "Downloads" -> DownloadsScreen(context) { drawerScope.launch { drawerState.open() } }; "Browser" -> BrowserScreen(context, browserUrl, { saveHistory(it) }, { requestDownloadNow(it) }, { browserUrl = it }, { drawerScope.launch { drawerState.open() } }); else -> SettingsScreen(historyItems, { history.clear(); historyItems = emptyList() }, onStorageSettings) { drawerScope.launch { drawerState.open() } } } } }
         }
         if (exitDialog) AlertDialog(onDismissRequest = { exitDialog = false }, title = { Text("Exit Palia Download Manager?") }, text = { Text("Are you sure you want to exit?") }, confirmButton = { TextButton(onClick = { activity.finish() }) { Text("YES") } }, dismissButton = { TextButton(onClick = { exitDialog = false }) { Text("NO") } })
     }
 }
 
 @Composable
-private fun PermissionScreen(step: Int, onNotification: () -> Unit, onStorage: () -> Unit, onSkip: () -> Unit) {
-    val notification = step == 1
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Card(shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
-            Column(Modifier.padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Icon(if (notification) Icons.Default.Notifications else Icons.Default.Folder, null, Modifier.size(58.dp), tint = Green)
-                Text(if (notification) "Step 1 of 2" else "Step 2 of 2", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Green)
-                Text(if (notification) "Allow download notifications" else "Allow storage access", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-                Text(if (notification) "Palia Download Manager uses notifications to show download progress and completion." else "PDM needs file access so downloaded files can be saved and managed.", color = Muted)
-                Button(onClick = if (notification) onNotification else onStorage, modifier = Modifier.fillMaxWidth()) { Text(if (notification) "Allow notifications" else "Allow storage") }
-                TextButton(onClick = onSkip) { Text(if (notification) "Skip this step" else "Continue without storage") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RowScope.NavItem(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) { NavigationBarItem(selected = selected, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label) }) }
-
-@Composable
-private fun DrawerTopBar(title: String, onMenu: () -> Unit) { Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onMenu) { Icon(Icons.Default.Menu, "Menu") }; Text(title, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Dark) } }
-
-@Composable
-private fun SplashScreen() { Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.Download, null, Modifier.size(96.dp), tint = Green); Text("Palia Download Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("FAST • SMART • SECURE", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold); LinearProgressIndicator(Modifier.width(150.dp), color = Green) } } }
+private fun PermissionScreen(step: Int, onNotification: () -> Unit, onStorage: () -> Unit, onSkip: () -> Unit) { val notification = step == 1; Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) { Card(shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = Mint)) { Column(Modifier.padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { Icon(if (notification) Icons.Default.Notifications else Icons.Default.Folder, null, Modifier.size(58.dp), tint = Green); Text(if (notification) "Step 1 of 2" else "Step 2 of 2", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Green); Text(if (notification) "Allow download notifications" else "Allow storage access", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text(if (notification) "Palia Download Manager uses notifications to show download progress and completion." else "PDM needs file access so downloaded files can be saved and managed.", color = Muted); Button(onClick = if (notification) onNotification else onStorage, modifier = Modifier.fillMaxWidth()) { Text(if (notification) "Allow notifications" else "Allow storage") }; TextButton(onClick = onSkip) { Text(if (notification) "Skip this step" else "Continue without storage") } } } } }
+@Composable private fun RowScope.NavItem(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) { NavigationBarItem(selected = selected, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label) }) }
+@Composable private fun DrawerTopBar(title: String, onMenu: () -> Unit) { Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onMenu) { Icon(Icons.Default.Menu, "Menu") }; Text(title, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Dark) } }
+@Composable private fun SplashScreen() { Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.Download, null, Modifier.size(96.dp), tint = Green); Text("Palia Download Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("FAST • SMART • SECURE", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold); LinearProgressIndicator(Modifier.width(150.dp), color = Green) } } }
 
 @Composable
 private fun HomeScreen(context: Context, url: String, onUrl: (String) -> Unit, onGo: () -> Unit, onBrowser: () -> Unit, onDownloads: () -> Unit, onTorrent: () -> Unit, onAddDownload: () -> Unit, onMenu: () -> Unit) {
     var field by remember(url) { mutableStateOf(TextFieldValue(url, TextRange(url.length))) }
     LaunchedEffect(url) { if (field.text != url) field = TextFieldValue(url, TextRange(url.length)) }
     Column(Modifier.fillMaxSize()) {
-        // IDM-style top row: hamburger stays on the left and the address bar starts immediately beside it.
-        Row(
-            Modifier.fillMaxWidth().padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onMenu, modifier = Modifier.size(52.dp)) {
-                Icon(Icons.Default.Menu, "Menu", tint = Dark, modifier = Modifier.size(30.dp))
-            }
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onMenu, modifier = Modifier.size(52.dp)) { Icon(Icons.Default.Menu, "Menu", tint = Dark, modifier = Modifier.size(30.dp)) }
             Spacer(Modifier.width(2.dp))
-            OutlinedTextField(
-                value = field,
-                onValueChange = { field = it; onUrl(it.text) },
-                modifier = Modifier.weight(1f).height(58.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-                placeholder = { Text("Paste here") },
-                leadingIcon = { Icon(Icons.Default.Language, null, tint = Dark) },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                keyboardActions = KeyboardActions(onGo = { onGo() }),
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (field.text.isNotBlank()) IconButton(onClick = { field = TextFieldValue(""); onUrl("") }) { Icon(Icons.Default.Clear, "Clear") }
-                        TextButton(onClick = { val v = readClipboard(context); field = TextFieldValue(v, TextRange(v.length)); onUrl(v) }) { Text("PASTE", color = Green, fontWeight = FontWeight.Bold) }
-                        FilledIconButton(onClick = onGo, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)) { Icon(Icons.Default.ArrowForward, "Go") }
-                    }
-                }
-            )
+            OutlinedTextField(value = field, onValueChange = { field = it; onUrl(it.text) }, modifier = Modifier.weight(1f).height(58.dp), singleLine = true, shape = RoundedCornerShape(18.dp), placeholder = { Text("Paste here") }, leadingIcon = { Icon(Icons.Default.Language, null, tint = Dark) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { onGo() }), trailingIcon = { Row(verticalAlignment = Alignment.CenterVertically) { if (field.text.isNotBlank()) IconButton(onClick = { field = TextFieldValue(""); onUrl("") }) { Icon(Icons.Default.Clear, "Clear") }; TextButton(onClick = { val v = readClipboard(context); field = TextFieldValue(v, TextRange(v.length)); onUrl(v) }) { Text("PASTE", color = Green, fontWeight = FontWeight.Bold) }; FilledIconButton(onClick = onGo, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Green, contentColor = Color.White)) { Icon(Icons.Default.ArrowForward, "Go") } } })
         }
-
-        // Branded header is deliberately below the address bar and includes the download icon.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 8.dp)
-        ) {
-            Icon(Icons.Default.Download, "Palia Download Manager", Modifier.size(58.dp), tint = Green)
-            Spacer(Modifier.width(14.dp))
-            Column {
-                Text("Palia Download Manager", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-                Text("Fast • Smart • Secure", color = Muted, fontSize = 17.sp)
-            }
-        }
-
-        LazyColumn(
-            Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(bottom = 100.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item {
-                Card(colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Ready to download?", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-                        Text("Paste a direct HTTP/HTTPS file link, .torrent or magnet link.", color = Muted)
-                        Button(onClick = onAddDownload, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Start Download") }
-                        OutlinedButton(onClick = onTorrent, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Open .torrent file") }
-                        OutlinedButton(onClick = onDownloads, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.List, null); Spacer(Modifier.width(8.dp)); Text("View Downloads") }
-                    }
-                }
-            }
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onBrowser, Modifier.weight(1f)) { Text("Browser") }
-                    OutlinedButton(onClick = onDownloads, Modifier.weight(1f)) { Text("Downloads") }
-                }
-            }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 8.dp)) { Icon(Icons.Default.Download, "Palia Download Manager", Modifier.size(58.dp), tint = Green); Spacer(Modifier.width(14.dp)); Column { Text("Palia Download Manager", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("Fast • Smart • Secure", color = Muted, fontSize = 17.sp) } }
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentPadding = PaddingValues(bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { Card(colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("Ready to download?", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("Paste a direct HTTP/HTTPS file link, .torrent or magnet link.", color = Muted); Button(onClick = onAddDownload, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Start Download") }; OutlinedButton(onClick = onTorrent, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Open .torrent file") }; OutlinedButton(onClick = onDownloads, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.List, null); Spacer(Modifier.width(8.dp)); Text("View Downloads") } } } }
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = onBrowser, Modifier.weight(1f)) { Text("Browser") }; OutlinedButton(onClick = onDownloads, Modifier.weight(1f)) { Text("Downloads") } } }
         }
     }
 }
 
+private data class SpeedSample(val size: Long, val time: Long)
+
 @Composable
 private fun DownloadsScreen(context: Context, onMenu: () -> Unit) {
     var files by remember { mutableStateOf(PdmStorage.allFiles(context)) }
+    var partials by remember { mutableStateOf(emptyList<File>()) }
+    var samples by remember { mutableStateOf<Map<String, SpeedSample>>(emptyMap()) }
+    var speeds by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var confirm by remember { mutableStateOf<File?>(null) }
-    LaunchedEffect(Unit) { while (true) { files = PdmStorage.allFiles(context); delay(1000) } }
-    Column(Modifier.fillMaxSize()) { DrawerTopBar("Downloads", onMenu); Column(Modifier.padding(horizontal = 14.dp)) { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) { Column(Modifier.weight(1f)) { Text("${files.size} file(s) • Download/PDM", color = Muted) }; IconButton(onClick = { files = PdmStorage.allFiles(context) }) { Icon(Icons.Default.Refresh, "Refresh") } }; if (files.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.DownloadDone, null, Modifier.size(60.dp), tint = Green); Text("No downloads yet", fontSize = 20.sp, fontWeight = FontWeight.Bold) } } else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 90.dp)) { items(files, key = { it.absolutePath }) { file -> Card(Modifier.fillMaxWidth()) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(fileIcon(file), null, tint = Blue, modifier = Modifier.size(34.dp)); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, color = Dark); Text("${formatSize(file.length())} • ${file.parentFile?.name ?: "PDM"}", fontSize = 12.sp, color = Muted) }; IconButton(onClick = { confirm = file }) { Icon(Icons.Default.Delete, "Delete download", tint = Color(0xFFD32F2F)) } } } } } } }
+    LaunchedEffect(Unit) {
+        while (true) {
+            files = PdmStorage.allFiles(context)
+            val root = PdmStorage.ensureFolders(context)
+            partials = root.walkTopDown().filter { it.isFile && it.name.startsWith(".") && it.name.endsWith(".part") }.toList()
+            val now = System.currentTimeMillis(); val next = samples.toMutableMap(); val nextSpeeds = speeds.toMutableMap()
+            partials.forEach { f -> val key = f.absolutePath; val old = next[key]; if (old != null) { val dt = now - old.time; if (dt >= 700) nextSpeeds[key] = ((f.length() - old.size) * 1000L / dt).coerceAtLeast(0L) }; next[key] = SpeedSample(f.length(), now) }
+            next.keys.filter { p -> partials.none { it.absolutePath == p } }.forEach { next.remove(it); nextSpeeds.remove(it) }
+            samples = next; speeds = nextSpeeds
+            delay(1000)
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        DrawerTopBar("Downloads", onMenu)
+        Column(Modifier.padding(horizontal = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) { Column(Modifier.weight(1f)) { Text("${files.size + partials.size} item(s) • Download/PDM", color = Muted) }; IconButton(onClick = { files = PdmStorage.allFiles(context) }) { Icon(Icons.Default.Refresh, "Refresh") } }
+            if (files.isEmpty() && partials.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.DownloadDone, null, Modifier.size(60.dp), tint = Green); Text("No downloads yet", fontSize = 20.sp, fontWeight = FontWeight.Bold) } }
+            else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 90.dp)) {
+                items(partials, key = { it.absolutePath }) { file -> val speed = speeds[file.absolutePath] ?: 0L; Card(colors = CardDefaults.cardColors(containerColor = Mint)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Download, null, tint = Green, modifier = Modifier.size(34.dp)); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(file.name.removePrefix(".").removeSuffix(".part"), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, color = Dark); Text("${formatSize(file.length())} • ${formatRateUi(speed)} • Downloading", fontSize = 12.sp, color = Green, fontWeight = FontWeight.SemiBold) } } } }
+                items(files, key = { it.absolutePath }) { file -> Card(Modifier.fillMaxWidth()) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(fileIcon(file), null, tint = Blue, modifier = Modifier.size(34.dp)); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(file.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, color = Dark); Text("${formatSize(file.length())} • ${file.parentFile?.name ?: "PDM"} • Completed", fontSize = 12.sp, color = Muted) }; IconButton(onClick = { confirm = file }) { Icon(Icons.Default.Delete, "Delete download", tint = Color(0xFFD32F2F)) } } } }
+            }
+        }
+    }
     confirm?.let { file -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text("Delete download?") }, text = { Text("Delete ${file.name} permanently?") }, confirmButton = { TextButton(onClick = { try { file.deleteRecursively() } catch (_: Throwable) {}; confirm = null; files = PdmStorage.allFiles(context) }) { Text("DELETE", color = Color(0xFFD32F2F)) } }, dismissButton = { TextButton(onClick = { confirm = null }) { Text("CANCEL") } }) }
 }
 
+private fun formatRateUi(bytesPerSecond: Long): String = when { bytesPerSecond >= 1024L * 1024L -> "%.1f MB/s".format(bytesPerSecond / 1024.0 / 1024.0); bytesPerSecond >= 1024L -> "%.0f KB/s".format(bytesPerSecond / 1024.0); else -> "$bytesPerSecond B/s" }
 private fun fileIcon(file: File): ImageVector = when (PdmStorage.categoryFor(file.name)) { "Images" -> Icons.Default.Image; "Videos" -> Icons.Default.Movie; "Music" -> Icons.Default.MusicNote; "APK" -> Icons.Default.Android; "ZIP" -> Icons.Default.Archive; "Documents" -> Icons.Default.Description; "Torrents" -> Icons.Default.CloudDownload; else -> Icons.Default.InsertDriveFile }
 
 @Composable
