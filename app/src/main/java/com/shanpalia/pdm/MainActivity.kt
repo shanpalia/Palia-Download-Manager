@@ -73,11 +73,27 @@ fun PdmApp(context: Context, incomingUrl: String?, onDownloadUrl: (String) -> Un
 }
 
 @Composable fun BrowserScreen(initialUrl: String, onDownload: (String) -> Unit) {
-    AndroidView(Modifier.fillMaxSize(), factory = { ctx -> WebView(ctx).apply {
-        settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.loadsImagesAutomatically = true; settings.allowFileAccess = false
-        webViewClient = object : WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean { if (isLikelyFileUrl(url)) { onDownload(url); return true }; return false } }
-        webChromeClient = WebChromeClient(); setDownloadListener { url, _, _, _, _ -> onDownload(url) }; loadUrl(initialUrl)
-    } }, update = { view -> if (initialUrl.isNotBlank() && view.url != initialUrl) view.loadUrl(initialUrl) })
+    AndroidView(
+        factory = { ctx: Context ->
+            WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadsImagesAutomatically = true
+                settings.allowFileAccess = false
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                        if (isLikelyFileUrl(url)) { onDownload(url); return true }
+                        return false
+                    }
+                }
+                webChromeClient = WebChromeClient()
+                setDownloadListener { url, _, _, _, _ -> onDownload(url) }
+                loadUrl(initialUrl)
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        update = { view -> if (initialUrl.isNotBlank() && view.url != initialUrl) view.loadUrl(initialUrl) }
+    )
 }
 
 @Composable fun DownloadsScreen(context: Context) {
