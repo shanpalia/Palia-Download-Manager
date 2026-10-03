@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -14,9 +13,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
- * Bottom-navigation item used inside Material3 NavigationBar.
+ * Bottom-navigation item used inside the Material3 NavigationBar.
  * RowScope.weight keeps all four items at equal width and prevents
- * the labels from being squeezed into vertical columns.
+ * labels from being squeezed into vertical columns.
  */
 @Composable
 fun RowScope.PdmNavigationBarItem(
