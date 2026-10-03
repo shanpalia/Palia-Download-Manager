@@ -30,6 +30,14 @@ object PdmStorage {
         return root
     }
 
+    fun allFiles(context: Context): List<File> {
+        val root = ensureFolders(context)
+        return root.walkTopDown()
+            .filter { it.isFile }
+            .sortedByDescending { it.lastModified() }
+            .toList()
+    }
+
     fun categoryFor(name: String): String {
         val lower = name.substringBefore('?').substringBefore('#').lowercase(Locale.US)
         return when {
