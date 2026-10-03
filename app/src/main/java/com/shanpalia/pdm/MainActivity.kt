@@ -408,19 +408,9 @@ private fun HomeScreen(
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
-            contentPadding = PaddingValues(top = 18.dp, bottom = 105.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 105.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    PdmLogo(72)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("Palia Download Manager", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-                        Text("Fast • Smart • Secure", color = Muted, fontSize = 14.sp)
-                    }
-                }
-            }
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -452,6 +442,16 @@ private fun HomeScreen(
                             }
                         }
                     )
+                }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PdmLogo(72)
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Palia Download Manager", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
+                        Text("Fast • Smart • Secure", color = Muted, fontSize = 14.sp)
+                    }
                 }
             }
             item {
