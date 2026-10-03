@@ -30,7 +30,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
@@ -258,7 +257,7 @@ private fun PdmApp(
             Scaffold(containerColor = Color.White, bottomBar = { NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) { NavItem("Home", Icons.Default.Home, screen == "Home") { screen = "Home" }; NavItem("Downloads", Icons.Default.Download, screen == "Downloads") { screen = "Downloads" }; NavItem("Browser", Icons.Default.Web, screen == "Browser") { screen = "Browser" }; NavItem("Settings", Icons.Default.Settings, screen == "Settings") { screen = "Settings" } } }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
                     when (screen) {
-                        "Home" -> HomeScreen(context, address, { address = it }, { submitAddress(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent, { requestDownloadNow(address) }, historyItems, { v -> address = v; submitAddress(v) }, { v -> history.remove(v); historyItems = history.all() }, { history.clear(); historyItems = emptyList() }, { drawerScope.launch { drawerState.open() } })
+                        "Home" -> HomeScreen(context, address, { address = it }, { submitAddress(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent, { requestDownloadNow(address) }, { drawerScope.launch { drawerState.open() } })
                         "Downloads" -> DownloadsScreen(context) { drawerScope.launch { drawerState.open() } }
                         "Browser" -> BrowserScreen(context, browserUrl, { saveHistory(it) }, { requestDownloadNow(it) }, { browserUrl = it }, { drawerScope.launch { drawerState.open() } })
                         else -> SettingsScreen(historyItems, { history.clear(); historyItems = emptyList() }, onStorageSettings) { drawerScope.launch { drawerState.open() } }
@@ -294,22 +293,77 @@ private fun RowScope.NavItem(label: String, icon: ImageVector, selected: Boolean
 private fun DrawerTopBar(title: String, onMenu: () -> Unit) { Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onMenu) { Icon(Icons.Default.Menu, "Menu") }; Text(title, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = Dark) } }
 
 @Composable
-private fun SplashScreen() { Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.Download, null, Modifier.size(96.dp), tint = Green); Text("Palia Download Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("FAST • SMART • SECURE", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold); LinearProgressIndicator(Modifier.width(250.dp).height(6.dp).clip(RoundedCornerShape(50)), color = Green); Text("Developer By Shanpalia", color = Muted, fontSize = 13.sp) } } }
+private fun SplashScreen() { Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.Download, null, Modifier.size(96.dp), tint = Green); Text("Palia Download Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("FAST • SMART • SECURE", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold); LinearProgressIndicator(Modifier.width(150.dp), color = Green) } } }
 
 @Composable
-private fun HomeScreen(context: Context, url: String, onUrl: (String) -> Unit, onGo: () -> Unit, onBrowser: () -> Unit, onDownloads: () -> Unit, onTorrent: () -> Unit, onAddDownload: () -> Unit, historyItems: List<HistoryItem>, onHistoryClick: (String) -> Unit, onHistoryDelete: (String) -> Unit, onClearHistory: () -> Unit, onMenu: () -> Unit) {
+private fun HomeScreen(context: Context, url: String, onUrl: (String) -> Unit, onGo: () -> Unit, onBrowser: () -> Unit, onDownloads: () -> Unit, onTorrent: () -> Unit, onAddDownload: () -> Unit, onMenu: () -> Unit) {
     var field by remember(url) { mutableStateOf(TextFieldValue(url, TextRange(url.length))) }
     LaunchedEffect(url) { if (field.text != url) field = TextFieldValue(url, TextRange(url.length)) }
     Column(Modifier.fillMaxSize()) {
-        DrawerTopBar("Palia Download Manager", onMenu)
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentPadding = PaddingValues(bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { OutlinedTextField(value = field, onValueChange = { field = it; onUrl(it.text) }, modifier = Modifier.fillMaxWidth().height(58.dp), singleLine = true, shape = RoundedCornerShape(16.dp), placeholder = { Text("Paste here") }, leadingIcon = { Icon(Icons.Default.Language, null) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { onGo() }), trailingIcon = { Row(verticalAlignment = Alignment.CenterVertically) { if (field.text.isNotBlank()) IconButton(onClick = { field = TextFieldValue(""); onUrl("") }) { Icon(Icons.Default.Clear, "Clear") }; TextButton(onClick = { val v = readClipboard(context); field = TextFieldValue(v, TextRange(v.length)); onUrl(v) }) { Text("PASTE", color = Green, fontWeight = FontWeight.Bold) }; FilledIconButton(onClick = onGo, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)) { Icon(Icons.Default.ArrowForward, "Go") } } }) }
-            item { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) { Icon(Icons.Default.Download, "PDM", Modifier.size(48.dp), tint = Green); Spacer(Modifier.width(10.dp)); Column { Text("Palia Download Manager", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("Fast • Smart • Secure", color = Muted) } } }
-            item { Card(colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("Ready to download?", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("Paste a direct HTTP/HTTPS file link, .torrent or magnet link.", color = Muted); Button(onClick = onAddDownload, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Start Download") }; OutlinedButton(onClick = onTorrent, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Open .torrent file") }; OutlinedButton(onClick = onDownloads, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.List, null); Spacer(Modifier.width(8.dp)); Text("View Downloads") } } } }
-            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = onBrowser, Modifier.weight(1f)) { Text("Browser") }; OutlinedButton(onClick = onDownloads, Modifier.weight(1f)) { Text("Downloads") } } }
-            item { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) { Text("Recent history", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Dark, modifier = Modifier.weight(1f)); if (historyItems.isNotEmpty()) TextButton(onClick = onClearHistory) { Text("Clear") } } }
-            if (historyItems.isEmpty()) item { Text("Your recent links will appear here.", color = Muted) }
-            else items(historyItems.take(10), key = { it.url }) { item -> Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF7FAF9)), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) { Text(item.url, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis, color = Dark); IconButton(onClick = { onHistoryClick(item.url) }) { Icon(Icons.Default.Download, "Open recent") }; IconButton(onClick = { onHistoryDelete(item.url) }) { Icon(Icons.Default.DeleteOutline, "Delete") } } } }
+        // IDM-style top row: hamburger stays on the left and the address bar starts immediately beside it.
+        Row(
+            Modifier.fillMaxWidth().padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onMenu, modifier = Modifier.size(52.dp)) {
+                Icon(Icons.Default.Menu, "Menu", tint = Dark, modifier = Modifier.size(30.dp))
+            }
+            Spacer(Modifier.width(2.dp))
+            OutlinedTextField(
+                value = field,
+                onValueChange = { field = it; onUrl(it.text) },
+                modifier = Modifier.weight(1f).height(58.dp),
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp),
+                placeholder = { Text("Paste here") },
+                leadingIcon = { Icon(Icons.Default.Language, null, tint = Dark) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { onGo() }),
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (field.text.isNotBlank()) IconButton(onClick = { field = TextFieldValue(""); onUrl("") }) { Icon(Icons.Default.Clear, "Clear") }
+                        TextButton(onClick = { val v = readClipboard(context); field = TextFieldValue(v, TextRange(v.length)); onUrl(v) }) { Text("PASTE", color = Green, fontWeight = FontWeight.Bold) }
+                        FilledIconButton(onClick = onGo, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)) { Icon(Icons.Default.ArrowForward, "Go") }
+                    }
+                }
+            )
+        }
+
+        // Branded header is deliberately below the address bar and includes the download icon.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 8.dp)
+        ) {
+            Icon(Icons.Default.Download, "Palia Download Manager", Modifier.size(58.dp), tint = Green)
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text("Palia Download Manager", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
+                Text("Fast • Smart • Secure", color = Muted, fontSize = 17.sp)
+            }
+        }
+
+        LazyColumn(
+            Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(bottom = 100.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Ready to download?", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
+                        Text("Paste a direct HTTP/HTTPS file link, .torrent or magnet link.", color = Muted)
+                        Button(onClick = onAddDownload, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Start Download") }
+                        OutlinedButton(onClick = onTorrent, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Open .torrent file") }
+                        OutlinedButton(onClick = onDownloads, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.List, null); Spacer(Modifier.width(8.dp)); Text("View Downloads") }
+                    }
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onBrowser, Modifier.weight(1f)) { Text("Browser") }
+                    OutlinedButton(onClick = onDownloads, Modifier.weight(1f)) { Text("Downloads") }
+                }
+            }
         }
     }
 }
