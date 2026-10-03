@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.shanpalia.pdm"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 36
         versionCode = 2
         versionName = "1.1.0"
@@ -39,7 +39,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
 
-    // BitTorrent / magnet support. 2.1.0-39 provides Android native builds.
+    // BitTorrent / magnet support. 2.1.0-39 requires Android API 28+.
     implementation("org.libtorrent4j:libtorrent4j:2.1.0-39")
     implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-39")
     implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-39")
