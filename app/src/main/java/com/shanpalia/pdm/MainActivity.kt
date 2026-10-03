@@ -27,13 +27,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -104,34 +105,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestStorageAndDownload(link: String) {
-        pendingDownload = link
-        waitingForStorage = true
-        openStorageSettings()
-    }
-
-    private fun extractIncoming(intent: Intent?): String? {
-        if (intent?.action == Intent.ACTION_SEND) return intent.getStringExtra(Intent.EXTRA_TEXT)
-        return intent?.data?.takeIf { it.scheme in listOf("http", "https", "magnet") }?.toString()
-    }
-
+    private fun requestStorageAndDownload(link: String) { pendingDownload = link; waitingForStorage = true; openStorageSettings() }
+    private fun extractIncoming(intent: Intent?): String? { if (intent?.action == Intent.ACTION_SEND) return intent.getStringExtra(Intent.EXTRA_TEXT); return intent?.data?.takeIf { it.scheme in listOf("http", "https", "magnet") }?.toString() }
     private fun startUrlDownload(value: String) {
         val clean = value.trim(); if (clean.isBlank()) return
-        when {
-            clean.startsWith("magnet:", true) -> startDownloadService(DownloadService.ACTION_TORRENT_MAGNET, clean, null)
-            clean.substringBefore('?').lowercase().endsWith(".torrent") -> startDownloadService(DownloadService.ACTION_TORRENT_URL, clean, null)
-            clean.startsWith("http://", true) || clean.startsWith("https://", true) -> startDownloadService(DownloadService.ACTION_HTTP, clean, null)
-        }
+        when { clean.startsWith("magnet:", true) -> startDownloadService(DownloadService.ACTION_TORRENT_MAGNET, clean, null); clean.substringBefore('?').lowercase().endsWith(".torrent") -> startDownloadService(DownloadService.ACTION_TORRENT_URL, clean, null); clean.startsWith("http://", true) || clean.startsWith("https://", true) -> startDownloadService(DownloadService.ACTION_HTTP, clean, null) }
     }
-
-    private fun startDownloadService(action: String, url: String?, path: String?) {
-        val intent = Intent(this, DownloadService::class.java).apply { this.action = action; if (url != null) putExtra(DownloadService.EXTRA_URL, url); if (path != null) putExtra(DownloadService.EXTRA_PATH, path) }
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-    }
-
-    private fun openStorageSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) try { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) } catch (_: Throwable) { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
-    }
+    private fun startDownloadService(action: String, url: String?, path: String?) { val intent = Intent(this, DownloadService::class.java).apply { this.action = action; if (url != null) putExtra(DownloadService.EXTRA_URL, url); if (path != null) putExtra(DownloadService.EXTRA_PATH, path) }; if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent) }
+    private fun openStorageSettings() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) try { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) } catch (_: Throwable) { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } }
 }
 
 @Composable
@@ -161,14 +142,7 @@ private fun PdmApp(activity: ComponentActivity, incomingUrl: String?, onDownload
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Color.White, surface = Color.White)) {
         if (splash) { SplashScreen(); return@MaterialTheme }
-        Scaffold(containerColor = Color.White, bottomBar = {
-            NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) {
-                navItem("Home", Icons.Default.Home, screen == "Home") { screen = "Home" }
-                navItem("Downloads", Icons.Default.Download, screen == "Downloads") { screen = "Downloads" }
-                navItem("Browser", Icons.Default.Web, screen == "Browser") { screen = "Browser" }
-                navItem("Settings", Icons.Default.Settings, screen == "Settings") { screen = "Settings" }
-            }
-        }) { pad ->
+        Scaffold(containerColor = Color.White, bottomBar = { NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) { navItem("Home", Icons.Default.Home, screen == "Home") { screen = "Home" }; navItem("Downloads", Icons.Default.Download, screen == "Downloads") { screen = "Downloads" }; navItem("Browser", Icons.Default.Web, screen == "Browser") { screen = "Browser" }; navItem("Settings", Icons.Default.Settings, screen == "Settings") { screen = "Settings" } } }) { pad ->
             Box(Modifier.fillMaxSize().padding(pad)) {
                 when (screen) {
                     "Home" -> HomeScreen(context, address, { address = it }, { openAddress(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent, { requestDownload(address) }, historyItems, { address = it; openAddress(it) }, { history.remove(it); historyItems = history.all() }, { history.clear(); historyItems = emptyList() })
@@ -178,15 +152,12 @@ private fun PdmApp(activity: ComponentActivity, incomingUrl: String?, onDownload
                 }
             }
         }
-        storagePrompt?.let { link ->
-            AlertDialog(onDismissRequest = { storagePrompt = null }, title = { Text("Storage access") }, text = { Text("Allow PDM storage access to save downloads in Download/PDM and its category folders.") }, confirmButton = { Button(onClick = { storagePrompt = null; requestStorage(link) }, colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Allow") } }, dismissButton = { TextButton(onClick = { storagePrompt = null }) { Text("Cancel") } })
-        }
+        storagePrompt?.let { link -> AlertDialog(onDismissRequest = { storagePrompt = null }, title = { Text("Storage access") }, text = { Text("Allow PDM storage access to save downloads in Download/PDM and its category folders.") }, confirmButton = { Button(onClick = { storagePrompt = null; requestStorage(link) }, colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Allow") } }, dismissButton = { TextButton(onClick = { storagePrompt = null }) { Text("Cancel") } }) }
         if (exitDialog) AlertDialog(onDismissRequest = { exitDialog = false }, title = { Text("Exit Palia Download Manager?") }, text = { Text("Are you sure you want to exit?") }, confirmButton = { TextButton(onClick = { exitDialog = false; activity.finish() }) { Text("YES") } }, dismissButton = { TextButton(onClick = { exitDialog = false }) { Text("NO") } })
     }
 }
 
 @Composable private fun RowScope.navItem(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) { NavigationBarItem(selected = selected, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label) }) }
-
 @Composable private fun SplashScreen() { Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Image(androidx.compose.ui.res.painterResource(R.drawable.ic_pdm_logo), "PDM", Modifier.size(210.dp)); Text("Palia Download Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("FAST  •  SMART  •  SECURE", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold); LinearProgressIndicator(Modifier.width(250.dp).height(6.dp).clip(RoundedCornerShape(50)), color = Green, trackColor = Color(0xFFE8EEF0)); Text("Developer By Shanpalia", color = Muted, fontSize = 13.sp) } } }
 
 @Composable private fun HomeScreen(context: Context, url: String, onUrl: (String) -> Unit, onGo: () -> Unit, onBrowser: () -> Unit, onDownloads: () -> Unit, onTorrent: () -> Unit, onAddDownload: () -> Unit, historyItems: List<HistoryItem>, onHistoryClick: (String) -> Unit, onHistoryDelete: (String) -> Unit, onClearHistory: () -> Unit) {
