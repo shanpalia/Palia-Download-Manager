@@ -1,0 +1,330 @@
+name: Apply 1DM style PDM flow
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-build:
+    if: ${{ !contains(github.event.head_commit.message, '[idm-flow-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch PDM UI and controls
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          main = Path('app/src/main/java/com/shanpalia/pdm/MainActivity.kt')
+          text = main.read_text(encoding='utf-8')
+
+          for old, new in [
+              ('import kotlinx.coroutines.launch', 'import kotlinx.coroutines.launch\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.withContext'),
+              ('import java.io.File', 'import java.io.File\nimport java.net.HttpURLConnection\nimport java.net.URL'),
+          ]:
+              if new.split('\\n')[0] not in text:
+                  text = text.replace(old, new, 1)
+
+          p = re.compile(r'@Composable\\nprivate fun PdmApp\\(.*?\\n\\}\\n\\n@Composable\\nprivate fun PermissionScreen', re.S)
+          replacement = r'''@Composable
+private fun PdmApp(activity: ComponentActivity, incomingUrl: String?, onDownload: (String) -> Unit, onPickTorrent: () -> Unit, onStorageSettings: () -> Unit, requestStorage: (String) -> Unit) {
+    val context = activity
+    val history = remember(context) { HistoryStore(context) }
+    var historyItems by remember { mutableStateOf(history.all()) }
+    var screen by rememberSaveable { mutableStateOf("Home") }
+    var address by rememberSaveable { mutableStateOf(incomingUrl.orEmpty()) }
+    var browserUrl by rememberSaveable { mutableStateOf("https://www.google.com") }
+    var splash by remember { mutableStateOf(true) }
+    var permissionStep by rememberSaveable { mutableIntStateOf(0) }
+    var permissionsReady by rememberSaveable { mutableStateOf(false) }
+    var exitDialog by remember { mutableStateOf(false) }
+    var dialogUrl by remember { mutableStateOf<String?>(null) }
+    var dialogName by remember { mutableStateOf("") }
+    var dialogSize by remember { mutableStateOf<Long?>(null) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+
+    fun finishPermissionFlow() { permissionStep = 0; permissionsReady = true }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) permissionStep = 2 else finishPermissionFlow()
+    }
+    LaunchedEffect(Unit) {
+        delay(900); splash = false
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) permissionStep = 1
+        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) permissionStep = 2
+        else finishPermissionFlow()
+    }
+    LaunchedEffect(permissionStep) {
+        if (permissionStep == 2) while (true) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || PdmStorage.hasPublicAccess()) { finishPermissionFlow(); break }
+            delay(350)
+        }
+    }
+    LaunchedEffect(permissionsReady, incomingUrl) {
+        if (permissionsReady && incomingUrl != null && incomingUrl.isNotBlank()) {
+            address = incomingUrl
+            browserUrl = incomingUrl
+            screen = "Browser"
+        }
+    }
+    BackHandler(enabled = !splash) {
+        if (permissionStep != 0) return@BackHandler
+        if (dialogUrl != null) { dialogUrl = null; return@BackHandler }
+        if (drawerState.isOpen) { drawerScope.launch { drawerState.close() }; return@BackHandler }
+        if (screen == "Browser") screen = "Home" else if (screen != "Home") screen = "Home" else exitDialog = true
+    }
+
+    fun saveHistory(v: String) { history.add(v); historyItems = history.all() }
+    fun showDownloadDialog(v: String) {
+        val clean = v.trim(); if (clean.isBlank()) return
+        dialogUrl = clean
+        dialogName = clean.substringBefore('?').substringBefore('#').substringAfterLast('/').ifBlank { "download.bin" }
+        dialogSize = null
+        saveHistory(clean)
+    }
+    fun enqueueDownload(v: String) {
+        val clean = v.trim(); if (clean.isBlank()) return
+        val name = dialogName.ifBlank { clean.substringBefore('?').substringAfterLast('/').ifBlank { "download.bin" } }
+        context.getSharedPreferences("pdm_active", Context.MODE_PRIVATE).edit().putString(name, clean).apply()
+        dialogUrl = null
+        screen = "Downloads"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) requestStorage(clean) else onDownload(clean)
+    }
+    fun openAddress(v: String) {
+        val clean = v.trim(); if (clean.isBlank()) return
+        address = clean
+        if (clean.startsWith("http://", true) || clean.startsWith("https://", true)) {
+            browserUrl = clean
+            screen = "Browser"
+        } else if (clean.startsWith("magnet:", true)) {
+            showDownloadDialog(clean)
+        } else {
+            browserUrl = "https://www.google.com/search?q=${Uri.encode(clean)}"
+            screen = "Browser"
+        }
+    }
+
+    MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Color.White, surface = Color.White)) {
+        if (splash) { SplashScreen(); return@MaterialTheme }
+        if (!permissionsReady || permissionStep != 0) {
+            PermissionScreen(permissionStep,
+                { if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else permissionStep = 2 },
+                onStorageSettings,
+                { if (permissionStep == 1) permissionStep = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) 2 else { finishPermissionFlow(); 0 } else finishPermissionFlow() })
+            return@MaterialTheme
+        }
+        ModalNavigationDrawer(drawerState = drawerState, drawerContent = {
+            ModalDrawerSheet(drawerContainerColor = Color.White) {
+                Column(Modifier.fillMaxHeight().padding(vertical = 8.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Default.Close, "Close menu") }
+                        Icon(Icons.Default.Download, null, Modifier.size(34.dp), tint = Green)
+                        Spacer(Modifier.width(10.dp)); Text("Palia Download Manager", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
+                    }
+                    HorizontalDivider()
+                    NavigationDrawerItem(icon = { Icon(Icons.Default.Home, null) }, label = { Text("Home") }, selected = screen == "Home", onClick = { screen = "Home"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(icon = { Icon(Icons.Default.Download, null) }, label = { Text("Downloads") }, selected = screen == "Downloads", onClick = { screen = "Downloads"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(icon = { Icon(Icons.Default.Web, null) }, label = { Text("Browser") }, selected = screen == "Browser", onClick = { screen = "Browser"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(icon = { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") }, selected = screen == "Settings", onClick = { screen = "Settings"; drawerScope.launch { drawerState.close() } })
+                    Spacer(Modifier.weight(1f))
+                    Text("RECENT TABS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Muted, modifier = Modifier.padding(20.dp, 10.dp, 20.dp, 6.dp))
+                    if (historyItems.isEmpty()) Text("No recent tabs", color = Muted, modifier = Modifier.padding(horizontal = 20.dp))
+                    else LazyColumn(Modifier.weight(0.55f, fill = false)) { items(historyItems.take(20), key = { it.url }) { item -> NavigationDrawerItem(icon = { Icon(Icons.Default.Language, null) }, label = { Text(item.url, maxLines = 2, overflow = TextOverflow.Ellipsis) }, selected = false, onClick = { address = item.url; browserUrl = item.url; screen = "Browser"; drawerScope.launch { drawerState.close() } }) } }
+                }
+            }
+        }) {
+            Scaffold(containerColor = Color.White, bottomBar = { NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) {
+                NavItem("Home", Icons.Default.Home, screen == "Home") { screen = "Home" }
+                NavItem("Downloads", Icons.Default.Download, screen == "Downloads") { screen = "Downloads" }
+                NavItem("Browser", Icons.Default.Web, screen == "Browser") { screen = "Browser" }
+                NavItem("Settings", Icons.Default.Settings, screen == "Settings") { screen = "Settings" }
+            } }) { padding ->
+                Box(Modifier.fillMaxSize().padding(padding)) {
+                    when (screen) {
+                        "Home" -> HomeScreen(address, { address = it }, { openAddress(address) }, { showDownloadDialog(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent) { drawerScope.launch { drawerState.open() } }
+                        "Downloads" -> DownloadsScreen(context, { drawerScope.launch { drawerState.open() } })
+                        "Browser" -> BrowserScreen(context, browserUrl, { address = it; saveHistory(it) }, { showDownloadDialog(it) }, { browserUrl = it; address = it }, { drawerScope.launch { drawerState.open() } })
+                        else -> SettingsScreen(historyItems, { history.clear(); historyItems = emptyList() }, onStorageSettings) { drawerScope.launch { drawerState.open() } }
+                    }
+                }
+            }
+        }
+
+        if (dialogUrl != null) {
+            LaunchedEffect(dialogUrl) {
+                val u = dialogUrl ?: return@LaunchedEffect
+                dialogSize = withContext(Dispatchers.IO) {
+                    try {
+                        val c = (URL(u).openConnection() as HttpURLConnection).apply { requestMethod = "HEAD"; instanceFollowRedirects = true; connectTimeout = 7000; readTimeout = 7000 }
+                        c.connect(); val n = c.contentLengthLong; c.disconnect(); if (n > 0) n else null
+                    } catch (_: Throwable) { null }
+                }
+            }
+            AlertDialog(onDismissRequest = { dialogUrl = null }, title = { Text("Download file", fontWeight = FontWeight.ExtraBold) }, text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(dialogName, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(dialogSize?.let { formatSize(it) } ?: "Size: checking…", color = Muted)
+                    Text(dialogUrl ?: "", color = Muted, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+            }, confirmButton = { Button(onClick = { enqueueDownload(dialogUrl ?: "") }) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("START") } }, dismissButton = { TextButton(onClick = { dialogUrl = null }) { Text("CANCEL") } })
+        }
+        if (exitDialog) AlertDialog(onDismissRequest = { exitDialog = false }, title = { Text("Exit Palia Download Manager?") }, text = { Text("Are you sure you want to exit?") }, confirmButton = { TextButton(onClick = { activity.finish() }) { Text("YES") } }, dismissButton = { TextButton(onClick = { exitDialog = false }) { Text("NO") } })
+    }
+}
+
+@Composable
+private fun PermissionScreen'''
+          text, count = p.subn(replacement, text, count=1)
+          if count != 1: raise SystemExit('PdmApp replacement failed')
+
+          p = re.compile(r'@Composable\\nprivate fun HomeScreen\\(.*?(?=@Composable\\nprivate fun SettingsScreen)', re.S)
+          replacement = r'''@Composable
+private fun HomeScreen(url: String, onUrl: (String) -> Unit, onGo: () -> Unit, onStart: () -> Unit, onBrowser: () -> Unit, onDownloads: () -> Unit, onTorrent: () -> Unit, onMenu: () -> Unit) {
+    var field by remember(url) { mutableStateOf(TextFieldValue(url, TextRange(url.length))) }
+    LaunchedEffect(url) { if (field.text != url) field = TextFieldValue(url, TextRange(url.length)) }
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onMenu, modifier = Modifier.size(52.dp)) { Icon(Icons.Default.Menu, "Menu", tint = Dark, modifier = Modifier.size(30.dp)) }
+            OutlinedTextField(value = field, onValueChange = { field = it; onUrl(it.text) }, modifier = Modifier.weight(1f).height(58.dp), singleLine = true, shape = RoundedCornerShape(18.dp), placeholder = { Text("Paste URL or search") }, leadingIcon = { Icon(Icons.Default.Language, null, tint = Dark) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { onGo() }), trailingIcon = { Row(verticalAlignment = Alignment.CenterVertically) { if (field.text.isNotBlank()) IconButton(onClick = { field = TextFieldValue(""); onUrl("") }) { Icon(Icons.Default.Close, "Clear") }; TextButton(onClick = onGo) { Text("GO", color = Green, fontWeight = FontWeight.ExtraBold) } } })
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Download, null, Modifier.size(42.dp), tint = Green); Spacer(Modifier.width(12.dp)); Column { Text("Palia Download Manager", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Dark); Text("Fast • Smart • Secure", color = Muted, fontSize = 14.sp) }
+        }
+        Card(Modifier.fillMaxWidth().padding(18.dp), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Ready to download?", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
+                Text("Paste a link, open it in Browser, or start a direct download.", color = Muted, fontSize = 16.sp)
+                Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(28.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Start Download", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                OutlinedButton(onClick = onTorrent, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(28.dp)) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Open .torrent file") }
+                OutlinedButton(onClick = onDownloads, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(28.dp)) { Icon(Icons.Default.List, null); Spacer(Modifier.width(8.dp)); Text("View Downloads") }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onBrowser, modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(26.dp)) { Icon(Icons.Default.Web, null); Spacer(Modifier.width(6.dp)); Text("Browser") }
+            OutlinedButton(onClick = onDownloads, modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(26.dp)) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(6.dp)); Text("Downloads") }
+        }
+    }
+}
+
+@Composable
+private fun DownloadsScreen(context: Context, onMenu: () -> Unit) {
+    var files by remember { mutableStateOf<List<File>>(emptyList()) }
+    var previous by remember { mutableStateOf<Map<String, Pair<Long, Long>>>(emptyMap()) }
+    var speeds by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val current = PdmStorage.allFiles(context)
+            val next = mutableMapOf<String, Pair<Long, Long>>()
+            val sp = mutableMapOf<String, Long>()
+            current.forEach { f ->
+                val old = previous[f.absolutePath]
+                if (old != null) { val dt = (now - old.second).coerceAtLeast(1); sp[f.absolutePath] = ((f.length() - old.first) * 1000L / dt).coerceAtLeast(0L) }
+                next[f.absolutePath] = f.length() to now
+            }
+            previous = next; speeds = sp; files = current
+            delay(700)
+        }
+    }
+    val active = files.filter { it.name.startsWith(".") && it.name.endsWith(".part") }
+    val done = files.filterNot { it.name.startsWith(".") && it.name.endsWith(".part") }
+    Column(Modifier.fillMaxSize()) {
+        DrawerTopBar("Downloads", onMenu)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Text("${active.size + done.size} file(s) • Download/PDM", color = Muted, fontSize = 15.sp); Spacer(Modifier.weight(1f)); IconButton(onClick = {}) { Icon(Icons.Default.Refresh, "Refresh") } }
+        LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(active, key = { it.absolutePath }) { f ->
+                val display = f.name.removePrefix(".").removeSuffix(".part")
+                val speed = speeds[f.absolutePath] ?: 0L
+                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF4FFFB)), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.InsertDriveFile, null, Modifier.size(42.dp), tint = Blue); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(display, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${formatSize(f.length())} • ${formatSpeed(speed)} • Downloading", color = Muted, fontSize = 13.sp) }; IconButton(onClick = {}) { Icon(Icons.Default.Pause, "Pause") } }
+                        LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 10.dp), color = Green)
+                    }
+                }
+            }
+            items(done, key = { it.absolutePath }) { f ->
+                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF6F7F8)), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.InsertDriveFile, null, Modifier.size(42.dp), tint = Blue); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(f.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${formatSize(f.length())} • Completed", color = Muted, fontSize = 13.sp) }; IconButton(onClick = { f.delete() }) { Icon(Icons.Default.Delete, "Delete", tint = Color(0xFFD83232)) } }
+                }
+            }
+            if (files.isEmpty()) item { Text("No downloads yet", color = Muted, modifier = Modifier.padding(24.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun BrowserScreen(context: Context, initialUrl: String, onUrlSaved: (String) -> Unit, onDownload: (String) -> Unit, onUrlChange: (String) -> Unit, onMenu: () -> Unit) {
+    var field by remember(initialUrl) { mutableStateOf(TextFieldValue(initialUrl, TextRange(initialUrl.length))) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onMenu, modifier = Modifier.size(52.dp)) { Icon(Icons.Default.Menu, "Menu", tint = Dark, modifier = Modifier.size(30.dp)) }
+            OutlinedTextField(value = field, onValueChange = { field = it; onUrlChange(it.text) }, modifier = Modifier.weight(1f).height(58.dp), singleLine = true, shape = RoundedCornerShape(18.dp), placeholder = { Text("Search or enter address") }, leadingIcon = { Icon(Icons.Default.Language, null) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { val u = field.text.trim(); if (u.isNotBlank()) { onUrlSaved(u); webView?.loadUrl(if (u.startsWith("http", true)) u else "https://www.google.com/search?q=${Uri.encode(u)}") } }) , trailingIcon = { if (field.text.isNotBlank()) IconButton(onClick = { field = TextFieldValue("") }) { Icon(Icons.Default.Close, "Clear") } })
+        }
+        AndroidView(factory = { ctx -> WebView(ctx).apply {
+            settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.loadsImagesAutomatically = true
+            webViewClient = object : WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean { onUrlSaved(request.url.toString()); return false }; override fun onPageFinished(view: WebView, url: String) { field = TextFieldValue(url, TextRange(url.length)); onUrlSaved(url) } }
+            setDownloadListener { url, _, _, _, _ -> if (!url.isNullOrBlank()) onDownload(url) }
+            loadUrl(initialUrl.ifBlank { "https://www.google.com" })
+            webView = this
+        }, modifier = Modifier.fillMaxSize())
+    }
+}
+
+private fun formatSpeed(v: Long): String = when { v <= 0L -> "0 B/s"; v < 1024L -> "$v B/s"; v < 1024L * 1024L -> String.format("%.1f KB/s", v / 1024.0); v < 1024L * 1024L * 1024L -> String.format("%.1f MB/s", v / 1024.0 / 1024.0); else -> String.format("%.2f GB/s", v / 1024.0 / 1024.0 / 1024.0) }
+
+private fun formatSize(v: Long): String = when { v < 1024L -> "$v B"; v < 1024L * 1024L -> String.format("%.1f KB", v / 1024.0); v < 1024L * 1024L * 1024L -> String.format("%.1f MB", v / 1024.0 / 1024.0); else -> String.format("%.2f GB", v / 1024.0 / 1024.0 / 1024.0) }
+
+'''
+          text, count = p.subn(replacement, text, count=1)
+          if count != 1: raise SystemExit('UI function replacement failed')
+
+          main.write_text(text, encoding='utf-8')
+
+          svc = Path('app/src/main/java/com/shanpalia/pdm/DownloadService.kt')
+          s = svc.read_text(encoding='utf-8')
+          if 'import java.util.concurrent.ConcurrentHashMap' not in s:
+              s = s.replace('import java.util.concurrent.atomic.AtomicInteger', 'import java.util.concurrent.atomic.AtomicInteger\nimport java.util.concurrent.ConcurrentHashMap', 1)
+          s = s.replace('const val EXTRA_NAME = "name"', 'const val EXTRA_NAME = "name"\n        const val ACTION_PAUSE = "com.shanpalia.pdm.PAUSE"\n        const val ACTION_RESUME = "com.shanpalia.pdm.RESUME"\n        const val EXTRA_CONTROL_URL = "control_url"', 1)
+          s = s.replace('private val activeJobs = AtomicInteger(0)', 'private val activeJobs = AtomicInteger(0)\n    private val pausedUrls = ConcurrentHashMap.newKeySet<String>()', 1)
+          marker = '    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {\n        val action = intent?.action ?: ACTION_HTTP\n'
+          if marker in s and 'ACTION_PAUSE ->' not in s:
+              repl = '''    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action ?: ACTION_HTTP
+        val controlUrl = intent?.getStringExtra(EXTRA_CONTROL_URL).orEmpty()
+        if (action == ACTION_PAUSE || action == ACTION_RESUME) {
+            if (action == ACTION_PAUSE) pausedUrls.add(controlUrl) else pausedUrls.remove(controlUrl)
+            return START_STICKY
+        }
+'''
+              s = s.replace(marker, repl, 1)
+          if 'private fun waitIfPaused(url: String)' not in s:
+              insert_at = '    private fun finishJob() {'
+              helper = '''    private fun waitIfPaused(url: String) {
+        while (pausedUrls.contains(url)) Thread.sleep(250)
+    }
+
+'''
+              s = s.replace(insert_at, helper + insert_at, 1)
+          # Pause checks before each network read in the two HTTP loops.
+          s = s.replace('while (input.read(buffer).also { n = it } > 0) {\n                            raf.write(buffer, 0, n)', 'while (true) {\n                            waitIfPaused(url)\n                            val read = input.read(buffer)\n                            if (read <= 0) break\n                            n = read\n                            raf.write(buffer, 0, n)', 1)
+          s = s.replace('while (input.read(buffer).also { n = it } > 0) {\n                            out.write(buffer, 0, n)', 'while (true) {\n                            waitIfPaused(url)\n                            val read = input.read(buffer)\n                            if (read <= 0) break\n                            n = read\n                            out.write(buffer, 0, n)', 1)
+          svc.write_text(s, encoding='utf-8')
+
+      - name: Commit patched files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/shanpalia/pdm/MainActivity.kt app/src/main/java/com/shanpalia/pdm/DownloadService.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "Implement 1DM style download flow [idm-flow-fixed]"
+          git push
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
