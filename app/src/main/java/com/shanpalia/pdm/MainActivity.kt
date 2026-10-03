@@ -271,7 +271,7 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
                     when (screen) {
                         "Home" -> HomeScreen(address, { address = it }, { goFromAddress(address) }, { showDownload(address) }, { screen = "Browser" }, { screen = "Downloads" }, onPickTorrent) { scope.launch { drawerState.open() } }
                         "Downloads" -> DownloadsScreen(context) { scope.launch { drawerState.open() } }
-                        "Browser" -> BrowserScreen(browserUrl, { address = it; browserUrl = it; saveHistory(it) }, { showDownload(it) }, { browserUrl = it; address = it }, { scope.launch { drawerState.open() } }) { screen = "Home" }
+                        "Browser" -> BrowserScreen(browserUrl, { address = it; browserUrl = it; saveHistory(it) }, { showDownload(it) }, { browserUrl = it; address = it }, { scope.launch { drawerState.open() } }, { screen = "Home" }) { screen = "Home" }
                         else -> SettingsScreen(historyItems, { history.clear(); historyItems = emptyList() }, onStorageSettings) { scope.launch { drawerState.open() } }
                     }
                 }
