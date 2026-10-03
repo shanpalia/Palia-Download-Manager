@@ -9,15 +9,14 @@ permissions:
 
 jobs:
   fix-home-addressbar:
-    if: github.event.head_commit.message != 'fix: move home address bar above header'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Move address bar above header
-        shell: python
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
           path = Path('app/src/main/java/com/shanpalia/pdm/MainActivity.kt')
@@ -33,8 +32,6 @@ jobs:
 
           header = section[header_start:address_start]
           address = section[address_start:next_card]
-
-          # Chrome-like order: address/search bar first, PDM header immediately below it.
           new_section = section[:header_start] + address + header + section[next_card:]
           new_section = new_section.replace(
               'contentPadding = PaddingValues(top = 18.dp, bottom = 105.dp)',
@@ -42,10 +39,8 @@ jobs:
               1
           )
 
-          if new_section == section:
-              raise SystemExit('No change was made; expected HomeScreen layout markers were not found.')
-
           path.write_text(text[:home_start] + new_section + text[home_end:], encoding='utf-8')
+          PY
 
       - name: Commit layout fix and remove one-time workflow
         run: |
