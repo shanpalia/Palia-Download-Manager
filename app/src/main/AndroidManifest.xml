@@ -12,9 +12,8 @@
         android:roundIcon="@mipmap/ic_pdm_logo"
         android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true">
-
         <activity
-            android:name=".MainActivity"
+            android:name=".PdmMainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -41,20 +40,13 @@
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
-
-        <service
-            android:name=".DownloadService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
+        <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
