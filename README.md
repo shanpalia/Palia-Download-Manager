@@ -2,15 +2,27 @@
 
 Android download manager + built-in browser by Shanpalia.
 
-## Planned features
-- Smart URL/address bar
-- Built-in browser
-- Direct file URL detection
-- Multi-connection downloads
-- Pause/resume and retry
-- Background downloads and notifications
-- Download history and categories
-- Settings and app update checker
+## Current features
+- Responsive Android home screen
+- Smart URL bar
+- Direct file URL detection for common file types
+- Download confirmation page
+- Real Android DownloadManager integration
+- Downloads tab with status and progress
+- Built-in WebView browser
+- Browser download interception
+- Share a URL from another app to PDM
+- Settings and app update entry
 
-## Current milestone
-Responsive Android home screen, navigation, downloads/browser placeholders, and settings UI are in place. The real download engine and browser integration will be added next.
+## Planned next
+- True segmented/multi-connection downloader with Range requests
+- Pause/resume controls managed by PDM
+- Download queue and categories
+- Background retry policy
+- Real GitHub Releases update checker
+- Custom PDM icon and splash resources
+
+## Build
+GitHub Actions builds a debug APK on pushes to `main` and manual workflow dispatch.
+
+Developer By Shanpalia
