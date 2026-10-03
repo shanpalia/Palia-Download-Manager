@@ -7,7 +7,7 @@
 
     <application
         android:theme="@style/Theme.PDM.Splash"
-        android:label="Palia Download Manager"
+        android:label="PDM"
         android:icon="@mipmap/ic_pdm_logo"
         android:roundIcon="@mipmap/ic_pdm_logo"
         android:usesCleartextTraffic="false"
