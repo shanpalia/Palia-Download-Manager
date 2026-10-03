@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -361,7 +362,7 @@ private fun SplashScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            PdmLogo(170)
+            PdmLogo(210)
             Text("Palia Download Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
             Text("FAST  •  SMART  •  SECURE", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             LinearProgressIndicator(
@@ -412,7 +413,7 @@ private fun HomeScreen(
         ) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    PdmLogo(62)
+                    PdmLogo(72)
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text("Palia Download Manager", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
@@ -442,18 +443,11 @@ private fun HomeScreen(
                                         Icon(imageVector = Icons.Default.Clear, contentDescription = "Clear")
                                     }
                                 }
-                                TextButton(onClick = {
-                                    val clip = readClipboard(context)
-                                    if (clip.isNotBlank()) {
-                                        field = TextFieldValue(clip, TextRange(clip.length))
-                                        onUrl(clip)
-                                    }
-                                }) { Text("PASTE") }
-                                FilledIconButton(
-                                    onClick = onGo,
-                                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)
-                                ) {
-                                    Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Go", tint = Color.White)
+                                TextButton(onClick = { field = TextFieldValue(readClipboard(context)); onUrl(field.text) }) {
+                                    Text("PASTE", color = Green, fontWeight = FontWeight.Bold)
+                                }
+                                FilledIconButton(onClick = onGo, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)) {
+                                    Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Open")
                                 }
                             }
                         }
@@ -461,26 +455,17 @@ private fun HomeScreen(
                 }
             }
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Mint),
-                    shape = RoundedCornerShape(28.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Card(colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            PdmLogo(72)
-                            Spacer(Modifier.width(14.dp))
+                            PdmLogo(105)
+                            Spacer(Modifier.width(18.dp))
                             Column {
-                                Text("Ready to download?", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-                                Text("HTTP/HTTPS, .torrent and magnet links.", color = Muted, fontSize = 14.sp)
+                                Text("Ready to download?", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
+                                Text("HTTP/HTTPS, .torrent and magnet links.", color = Muted, fontSize = 16.sp)
                             }
                         }
-                        Button(
-                            onClick = onAddDownload,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(22.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Green)
-                        ) {
+                        Button(onClick = onAddDownload, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Green)) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Add Download", fontWeight = FontWeight.Bold)
@@ -489,101 +474,64 @@ private fun HomeScreen(
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    QuickAction("Browser", Icons.Default.Web, onBrowser, Modifier.weight(1f))
-                    QuickAction("Downloads", Icons.Default.Download, onDownloads, Modifier.weight(1f))
-                    QuickAction("Torrent", Icons.Default.Download, onTorrent, Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    ActionCard("Browser", Icons.Default.Web, Modifier.weight(1f), onBrowser)
+                    ActionCard("Downloads", Icons.Default.Download, Modifier.weight(1f), onDownloads)
+                    ActionCard("Torrent", Icons.Default.Download, Modifier.weight(1f), onTorrent)
                 }
             }
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Recent History", modifier = Modifier.weight(1f), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-                    if (historyItems.isNotEmpty()) TextButton(onClick = onClearHistory) { Text("Clear all") }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Recent History", fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, color = Dark, modifier = Modifier.weight(1f))
+                    if (historyItems.isNotEmpty()) TextButton(onClick = onClearHistory) { Text("Clear") }
                 }
-                if (historyItems.isEmpty()) {
-                    Text("Your visited links and searches will appear here.", color = Muted)
-                } else {
-                    historyItems.take(6).forEach { item ->
-                        HistoryRow(item.url, { onHistoryClick(item.url) }, { onHistoryDelete(item.url) })
+            }
+            if (historyItems.isEmpty()) {
+                item {
+                    Text("Your visited links and searches will appear here.", color = Muted, modifier = Modifier.padding(bottom = 12.dp))
+                }
+            } else {
+                items(historyItems.take(10), key = { it.url }) { item ->
+                    Card(colors = CardDefaults.cardColors(containerColor = Soft), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(item.url, maxLines = 2, modifier = Modifier.weight(1f), color = Dark)
+                            IconButton(onClick = { onHistoryClick(item.url) }) { Icon(imageVector = Icons.Default.OpenInBrowser, contentDescription = "Open") }
+                            IconButton(onClick = { onHistoryDelete(item.url) }) { Icon(imageVector = Icons.Default.DeleteOutline, contentDescription = "Delete") }
+                        }
                     }
                 }
             }
         }
-        FloatingActionButton(
-            onClick = onAddDownload,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 18.dp),
-            containerColor = Blue,
-            contentColor = Color.White
-        ) { Icon(imageVector = Icons.Default.Download, contentDescription = "Add download") }
-    }
-}
-
-@Composable
-private fun HistoryRow(url: String, onClick: () -> Unit, onDelete: () -> Unit) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(17.dp),
-        elevation = CardDefaults.cardElevation(1.dp),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-    ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = Icons.Default.Language, contentDescription = null, tint = Green)
-            Spacer(Modifier.width(10.dp))
-            Text(url, Modifier.weight(1f), maxLines = 2, fontSize = 13.sp)
-            IconButton(onClick = onDelete) { Icon(imageVector = Icons.Default.Clear, contentDescription = "Delete", tint = Muted) }
+        FloatingActionButton(onClick = onAddDownload, containerColor = Blue, contentColor = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp, 18.dp, 18.dp, 82.dp)) {
+            Icon(imageVector = Icons.Default.Download, contentDescription = "Add download")
         }
     }
 }
 
 @Composable
-private fun QuickAction(title: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier) {
-    Card(onClick = onClick, modifier = modifier, colors = CardDefaults.cardColors(containerColor = MintStrong), shape = RoundedCornerShape(22.dp)) {
-        Column(Modifier.padding(13.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(imageVector = icon, contentDescription = null, tint = Green, modifier = Modifier.size(29.dp))
-            Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+private fun ActionCard(title: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(onClick = onClick, modifier = modifier.height(100.dp), colors = CardDefaults.cardColors(containerColor = MintStrong), shape = RoundedCornerShape(22.dp)) {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(imageVector = icon, contentDescription = title, tint = Green, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.height(7.dp))
+            Text(title, fontWeight = FontWeight.Bold, color = Dark)
         }
     }
 }
 
 @Composable
 private fun DownloadsScreen(context: Context) {
-    var files by remember { mutableStateOf<List<File>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        files = withContext(Dispatchers.IO) {
-            PdmStorage.ensureFolders(context).walkTopDown().filter { it.isFile }.take(200).toList()
-        }
-    }
-    LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = 18.dp),
-        contentPadding = PaddingValues(top = 20.dp, bottom = 30.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item {
-            Text("Downloads", fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-            Text("PDM: ${PdmStorage.root(context).absolutePath}", color = Muted, fontSize = 12.sp)
-        }
-        if (files.isEmpty()) {
-            item {
-                Card(colors = CardDefaults.cardColors(containerColor = Soft), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(imageVector = Icons.Default.Folder, contentDescription = null, tint = Green, modifier = Modifier.size(56.dp))
-                        Text("No downloads yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Downloaded files will appear here.", color = Muted)
-                    }
-                }
-            }
-        } else {
-            items(files, key = { it.absolutePath }) { file ->
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.Storage, contentDescription = null, tint = Green, modifier = Modifier.size(30.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(file.name, fontWeight = FontWeight.Bold)
-                            Text(file.parentFile?.name ?: "PDM", color = Muted, fontSize = 12.sp)
-                        }
-                    }
+    val files = remember { mutableStateListOf<File>() }
+    LaunchedEffect(Unit) { files.clear(); files.addAll(PdmStorage.allFiles(context)) }
+    LazyColumn(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("Downloads", fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, color = Dark) }
+        if (files.isEmpty()) item { Text("No downloads yet.", color = Muted) }
+        items(files, key = { it.absolutePath }) { file ->
+            Card(colors = CardDefaults.cardColors(containerColor = Soft), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(file.name, fontWeight = FontWeight.Bold, color = Dark)
+                    Text(file.parent ?: "", color = Muted, fontSize = 12.sp)
+                    Text("${file.length()} bytes", color = Muted, fontSize = 12.sp)
                 }
             }
         }
@@ -600,52 +548,36 @@ private fun BrowserScreen(
     onOpen: (String) -> Unit
 ) {
     var address by remember(initialUrl) { mutableStateOf(TextFieldValue(initialUrl, TextRange(initialUrl.length))) }
+    var currentUrl by remember(initialUrl) { mutableStateOf(initialUrl) }
     var showHistory by remember { mutableStateOf(false) }
-    var currentUrl by remember { mutableStateOf(normalizeBrowserUrl(initialUrl)) }
 
     Column(Modifier.fillMaxSize()) {
-        Surface(color = Color(0xFF16A34A), shadowElevation = 3.dp) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { }) { Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White) }
+        Surface(shadowElevation = 3.dp, color = Color.White) {
+            Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { currentUrl = "https://www.google.com"; onOpen(currentUrl) }) {
+                    Icon(imageVector = Icons.Default.Home, contentDescription = "Home")
+                }
                 OutlinedTextField(
                     value = address,
-                    onValueChange = { address = it; showHistory = true },
+                    onValueChange = { address = it },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    shape = RoundedCornerShape(28.dp),
-                    placeholder = { Text("Search or enter address", color = Color.White.copy(alpha = .75f)) },
-                    leadingIcon = { Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color.White) },
-                    trailingIcon = {
-                        TextButton(onClick = {
-                            val clip = readClipboard(context)
-                            if (clip.isNotBlank()) address = TextFieldValue(clip, TextRange(clip.length))
-                            showHistory = true
-                        }) { Text("PASTE", color = Color.White) }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.White,
-                        unfocusedBorderColor = Color.White.copy(alpha = .65f),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        cursorColor = Color.White
-                    )
+                    shape = RoundedCornerShape(20.dp),
+                    placeholder = { Text("Search or enter address") },
+                    trailingIcon = { TextButton(onClick = { showHistory = !showHistory }) { Text("History") } }
                 )
                 IconButton(onClick = {
                     val value = address.text.trim()
                     if (value.isNotBlank()) {
-                        onVisit(value)
                         currentUrl = normalizeBrowserUrl(value)
-                        onOpen(value)
+                        onOpen(currentUrl)
+                        onVisit(value)
                     }
-                    showHistory = false
-                }) { Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Go", tint = Color.White) }
+                }) { Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Go") }
             }
         }
 
-        if (showHistory && historyItems.isNotEmpty()) {
+        if (showHistory) {
             Card(
                 Modifier.fillMaxWidth().padding(8.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
