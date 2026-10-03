@@ -1,4 +1,4 @@
-name: Fix PDM download flow
+name: Fix PDM download navigation
 
 on:
   push:
@@ -8,37 +8,34 @@ permissions:
   contents: write
 
 jobs:
-  patch-download-flow:
-    if: ${{ !contains(github.event.head_commit.message, '[pdm-flow-patched]') }}
+  patch-download-navigation:
+    if: ${{ !contains(github.event.head_commit.message, '[pdm-nav-fixed]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Patch MainActivity
+      - name: Patch MainActivity robustly
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           path = Path('app/src/main/java/com/shanpalia/pdm/MainActivity.kt')
           text = path.read_text(encoding='utf-8')
 
-          text = text.replace(
-              'import android.webkit.WebResourceRequest\nimport android.webkit.WebViewClient',
-              'import android.webkit.WebResourceRequest\nimport android.webkit.WebViewClient\nimport android.webkit.DownloadListener'
-          )
+          if 'import android.webkit.DownloadListener' not in text:
+              text = text.replace(
+                  'import android.webkit.WebViewClient',
+                  'import android.webkit.WebViewClient\nimport android.webkit.DownloadListener',
+                  1
+              )
 
-          old_request = '''    fun requestDownload(value: String) {
+          request_pattern = re.compile(r'    fun requestDownload\(value: String\) \{.*?\n    \}', re.S)
+          request_replacement = '''    fun requestDownload(value: String) {
         val clean = value.trim()
         if (clean.isBlank()) return
         saveHistory(clean)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) storagePrompt = clean else onDownload(clean)
-    }'''
-          new_request = '''    fun requestDownload(value: String) {
-        val clean = value.trim()
-        if (clean.isBlank()) return
-        saveHistory(clean)
-        // IDM-style flow: once a download is requested, immediately show Downloads.
         screen = "Downloads"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !PdmStorage.hasPublicAccess()) {
             storagePrompt = clean
@@ -46,23 +43,17 @@ jobs:
             onDownload(clean)
         }
     }'''
-          if old_request not in text:
-              raise SystemExit('requestDownload block not found')
-          text = text.replace(old_request, new_request, 1)
+          text, count = request_pattern.subn(request_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('requestDownload function was not found')
 
-          old_open = '''    fun openAddress(value: String) {
+          open_pattern = re.compile(r'    fun openAddress\(value: String\) \{.*?\n    \}', re.S)
+          open_replacement = '''    fun openAddress(value: String) {
         val clean = value.trim()
         if (clean.isBlank()) return
-        if (clean.startsWith("magnet:", true) || isDownloadLink(clean)) requestDownload(clean)
-        else if (clean.startsWith("http://", true) || clean.startsWith("https://", true)) { saveHistory(clean); browserUrl = clean; screen = "Browser" }
-        else { saveHistory(clean); browserUrl = "https://www.google.com/search?q=${Uri.encode(clean)}"; screen = "Browser" }
-    }'''
-          new_open = '''    fun openAddress(value: String) {
-        val clean = value.trim()
-        if (clean.isBlank()) return
-        // The Home address bar is the download input, like IDM.
-        // Web browsing remains available from the Browser tab.
-        if (clean.startsWith("magnet:", true) || clean.startsWith("http://", true) || clean.startsWith("https://", true)) {
+        if (clean.startsWith("magnet:", true) ||
+            clean.startsWith("http://", true) ||
+            clean.startsWith("https://", true)) {
             requestDownload(clean)
         } else {
             saveHistory(clean)
@@ -70,28 +61,27 @@ jobs:
             screen = "Browser"
         }
     }'''
-          if old_open not in text:
-              raise SystemExit('openAddress block not found')
-          text = text.replace(old_open, new_open, 1)
+          text, count = open_pattern.subn(open_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('openAddress function was not found')
 
-          old_webview = '''            settings.javaScriptEnabled = true; settings.domStorageEnabled = true
-            webViewClient = object : WebViewClient() {'''
-          new_webview = '''            settings.javaScriptEnabled = true; settings.domStorageEnabled = true
+          if 'setDownloadListener(DownloadListener {' not in text:
+              marker = 'settings.javaScriptEnabled = true; settings.domStorageEnabled = true'
+              listener = '''settings.javaScriptEnabled = true; settings.domStorageEnabled = true
             setDownloadListener(DownloadListener { downloadUrl, _, _, _, _ ->
                 if (!downloadUrl.isNullOrBlank()) onDownload(downloadUrl)
-            })
-            webViewClient = object : WebViewClient() {'''
-          if old_webview not in text:
-              raise SystemExit('WebView block not found')
-          text = text.replace(old_webview, new_webview, 1)
+            })'''
+              if marker not in text:
+                  raise SystemExit('WebView settings marker was not found')
+              text = text.replace(marker, listener, 1)
 
           path.write_text(text, encoding='utf-8')
 
-      - name: Commit patched file
+      - name: Commit patched MainActivity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/shanpalia/pdm/MainActivity.kt
           git diff --cached --quiet && exit 0
-          git commit -m "Fix PDM paste-to-download flow [pdm-flow-patched]"
+          git commit -m "Fix PDM download page navigation [pdm-nav-fixed]"
           git push
