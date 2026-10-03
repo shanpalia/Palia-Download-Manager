@@ -1,7 +1,10 @@
 package com.shanpalia.pdm
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
@@ -31,7 +34,12 @@ private const val CURRENT_VERSION = "1.0.0"
 private val FileExtensions = listOf(".apk", ".zip", ".rar", ".7z", ".pdf", ".mp3", ".m4a", ".wav", ".mp4", ".mkv", ".avi", ".mov", ".jpg", ".jpeg", ".png", ".webp", ".iso", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx")
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); val incoming = extractUrl(intent); setContent { PdmApp(this, incoming) { startDownload(it) } } }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 501)
+        val incoming = extractUrl(intent)
+        setContent { PdmApp(this, incoming) { startDownload(it) } }
+    }
     private fun extractUrl(intent: Intent?): String? = intent?.dataString ?: if (intent?.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT) else null
     private fun startDownload(url: String) { val clean = url.trim(); if (!clean.startsWith("http://") && !clean.startsWith("https://")) return; startForegroundService(Intent(this, DownloadService::class.java).apply { putExtra("url", clean); putExtra("name", URLUtil.guessFileName(clean, null, null)) }) }
 }
@@ -104,5 +112,4 @@ suspend fun checkLatestRelease(): String = withContext(Dispatchers.IO) {
         when { tag == null -> "No release found"; tag == CURRENT_VERSION -> "You are up to date"; else -> "New version available: $tag" }
     } catch (e: Exception) { "Update check failed: ${e.message ?: "network error"}" }
 }
-
 @Composable fun SettingRow(title: String, subtitle: String) { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { Text(title, fontWeight = FontWeight.Bold); Text(subtitle, color = Color.Gray) } } }
