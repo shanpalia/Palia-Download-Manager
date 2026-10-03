@@ -16,74 +16,20 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Web
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -92,7 +38,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -109,6 +54,8 @@ private val Dark = Color(0xFF12231E)
 private val Muted = Color(0xFF6F7D77)
 private val Soft = Color(0xFFF5F8F7)
 private const val CURRENT_VERSION = "1.1.0"
+private const val UPDATE_MANIFEST = "https://shanpalia.github.io/WebsitePaliaAPK_V.2/pdm-update.json"
+private const val WEBSITE_URL = "https://shanpalia.github.io/WebsitePaliaAPK_V.2/"
 
 private data class HistoryItem(val url: String, val time: Long)
 
@@ -134,28 +81,36 @@ private class HistoryStore(context: Context) {
         list.add(0, HistoryItem(url, System.currentTimeMillis()))
         val array = JSONArray()
         list.take(100).forEach { item ->
-            array.put(JSONObject().apply { put("url", item.url); put("time", item.time) })
+            array.put(JSONObject().apply {
+                put("url", item.url)
+                put("time", item.time)
+            })
         }
         prefs.edit().putString(key, array.toString()).apply()
     }
 
-    fun remove(url: String) {
+    fun remove(value: String) {
         val array = JSONArray()
-        all().filterNot { it.url == url }.forEach { item ->
-            array.put(JSONObject().apply { put("url", item.url); put("time", item.time) })
+        all().filterNot { it.url == value }.forEach { item ->
+            array.put(JSONObject().apply {
+                put("url", item.url)
+                put("time", item.time)
+            })
         }
         prefs.edit().putString(key, array.toString()).apply()
     }
 
-    fun clear() { prefs.edit().remove(key).apply() }
+    fun clear() = prefs.edit().remove(key).apply()
 }
 
 class MainActivity : ComponentActivity() {
     private var pendingLink: String? = null
     private var waitingForStorage = false
 
-    private val torrentPicker = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) copyTorrent(uri)?.let { startTorrentFile(it) }
+    private val torrentPicker = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) copyTorrent(uri)?.let(::startTorrentFile)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -165,7 +120,9 @@ class MainActivity : ComponentActivity() {
                 context = this,
                 incomingUrl = extractIncoming(intent),
                 onDownload = ::startUrlDownload,
-                onPickTorrent = { torrentPicker.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")) },
+                onPickTorrent = {
+                    torrentPicker.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*"))
+                },
                 onStorageSettings = ::openStorageSettings,
                 requestStorage = { link ->
                     pendingLink = link
@@ -189,16 +146,17 @@ class MainActivity : ComponentActivity() {
     private fun extractIncoming(intent: Intent?): String? {
         if (intent?.action == Intent.ACTION_SEND) return intent.getStringExtra(Intent.EXTRA_TEXT)
         val data = intent?.data ?: return null
-        return if (data.scheme == "http" || data.scheme == "https" || data.scheme == "magnet") data.toString() else null
+        return if (data.scheme in listOf("http", "https", "magnet")) data.toString() else null
     }
 
     private fun startUrlDownload(value: String) {
         val clean = value.trim()
         if (clean.isBlank()) return
         when {
-            clean.startsWith("magnet:?", true) -> startService(DownloadService.ACTION_TORRENT_MAGNET, clean, null)
+            clean.startsWith("magnet:", true) -> startService(DownloadService.ACTION_TORRENT_MAGNET, clean, null)
             clean.substringBefore('?').lowercase().endsWith(".torrent") -> startService(DownloadService.ACTION_TORRENT_URL, clean, null)
-            clean.startsWith("http://", true) || clean.startsWith("https://", true) -> startService(DownloadService.ACTION_HTTP, clean, null)
+            clean.startsWith("http://", true) || clean.startsWith("https://", true) ->
+                startService(DownloadService.ACTION_HTTP, clean, null)
             else -> startService(DownloadService.ACTION_HTTP, "https://www.google.com/search?q=${Uri.encode(clean)}", null)
         }
     }
@@ -222,7 +180,9 @@ class MainActivity : ComponentActivity() {
                 target.outputStream().use { output -> input.copyTo(output) }
             }
         }
-    } catch (_: Throwable) { null }
+    } catch (_: Throwable) {
+        null
+    }
 
     private fun openStorageSettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -251,8 +211,9 @@ private fun PdmApp(
     var splash by remember { mutableStateOf(true) }
     var selected by remember { mutableStateOf("Home") }
     var url by remember { mutableStateOf(incomingUrl.orEmpty()) }
-    var browserUrl by remember { mutableStateOf(incomingUrl?.takeIf { it.startsWith("http", true) } ?: "https://www.google.com") }
-    var downloadDialog by remember { mutableStateOf<String?>(null) }
+    var browserUrl by remember {
+        mutableStateOf(incomingUrl?.takeIf { it.startsWith("http", true) } ?: "https://www.google.com")
+    }
     var storageDialog by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -261,8 +222,13 @@ private fun PdmApp(
     }
 
     LaunchedEffect(splash) {
-        if (!splash && Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            (context as? ComponentActivity)?.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 501)
+        if (!splash && Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            (context as? ComponentActivity)?.requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                501
+            )
         }
     }
 
@@ -278,7 +244,7 @@ private fun PdmApp(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
             storageDialog = clean
         } else {
-            downloadDialog = clean
+            onDownload(clean)
         }
     }
 
@@ -287,13 +253,13 @@ private fun PdmApp(
         if (clean.isBlank()) return
         if (clean.startsWith("magnet:", true) || isFileUrl(clean)) {
             beginDownload(clean)
-        } else if (clean.startsWith("http://", true) || clean.startsWith("https://", true)) {
-            record(clean)
-            browserUrl = clean
-            selected = "Browser"
         } else {
             record(clean)
-            browserUrl = "https://www.google.com/search?q=${Uri.encode(clean)}"
+            browserUrl = if (clean.startsWith("http://", true) || clean.startsWith("https://", true)) {
+                clean
+            } else {
+                "https://www.google.com/search?q=${Uri.encode(clean)}"
+            }
             selected = "Browser"
         }
     }
@@ -367,30 +333,13 @@ private fun PdmApp(
             }
         }
 
-        downloadDialog?.let { link ->
-            AlertDialog(
-                onDismissRequest = { downloadDialog = null },
-                title = { Text(if (link.startsWith("magnet:", true)) "Add Torrent" else "Download File") },
-                text = { Text(link, color = Muted) },
-                confirmButton = {
-                    Button(
-                        onClick = { onDownload(link); downloadDialog = null },
-                        colors = ButtonDefaults.buttonColors(containerColor = Green)
-                    ) {
-                        Icon(imageVector = Icons.Default.Download, contentDescription = null)
-                        Spacer(Modifier.width(7.dp))
-                        Text(if (link.startsWith("magnet:", true)) "Start Torrent" else "Download")
-                    }
-                },
-                dismissButton = { TextButton(onClick = { downloadDialog = null }) { Text("Cancel") } }
-            )
-        }
-
         storageDialog?.let { link ->
             AlertDialog(
                 onDismissRequest = { storageDialog = null },
                 title = { Text("Storage access") },
-                text = { Text("PDM can save downloads in Download/PDM with separate Images, Videos, Music, APK, ZIP, Documents and Torrents folders. Android will open the system access page only when you start a download.") },
+                text = {
+                    Text("PDM will save files in Download/PDM with separate Images, Videos, Music, APK, ZIP, Documents and Torrents folders. Android will open the system access page now.")
+                },
                 confirmButton = {
                     Button(
                         onClick = { storageDialog = null; requestStorage(link) },
@@ -408,23 +357,31 @@ private fun PdmApp(
 @Composable
 private fun SplashScreen() {
     Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Image(painter = painterResource(R.drawable.ic_pdm_logo), contentDescription = "PDM", modifier = Modifier.size(170.dp), contentScale = ContentScale.Fit)
-            Text("PDM", fontSize = 42.sp, fontWeight = FontWeight.ExtraBold, color = Green)
-            Text("Palia Download Manager", color = Muted, fontSize = 18.sp)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            PdmLogo(170)
+            Text("Palia Download Manager", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
             Text("FAST  •  SMART  •  SECURE", color = Blue, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            LinearProgressIndicator(modifier = Modifier.width(250.dp).height(6.dp).clip(RoundedCornerShape(50)), color = Green, trackColor = Color(0xFFE8EEF0))
+            LinearProgressIndicator(
+                modifier = Modifier.width(250.dp).height(6.dp).clip(RoundedCornerShape(50)),
+                color = Green,
+                trackColor = Color(0xFFE8EEF0)
+            )
             Text("Loading…", color = Muted, fontSize = 13.sp)
-            Spacer(Modifier.height(10.dp))
-            Text("Developer By", color = Muted, fontSize = 12.sp)
-            Text("Shanpalia", color = Blue, fontSize = 27.sp, fontWeight = FontWeight.SemiBold)
+            Text("Developer By Shanpalia", color = Muted, fontSize = 13.sp)
         }
     }
 }
 
 @Composable
 private fun PdmLogo(size: Int) {
-    Image(painter = painterResource(R.drawable.ic_pdm_logo), contentDescription = "PDM logo", modifier = Modifier.size(size.dp), contentScale = ContentScale.Fit)
+    androidx.compose.foundation.Image(
+        painter = androidx.compose.ui.res.painterResource(R.drawable.ic_pdm_logo),
+        contentDescription = "PDM",
+        modifier = Modifier.size(size.dp)
+    )
 }
 
 @Composable
@@ -454,20 +411,25 @@ private fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     PdmLogo(62)
                     Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
+                    Column {
                         Text("Palia Download Manager", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
                         Text("Fast • Smart • Secure", color = Muted, fontSize = 14.sp)
                     }
                 }
             }
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(28.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp), modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(28.dp),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     OutlinedTextField(
                         value = field,
-                        onValueChange = { value -> field = value; onUrl(value.text) },
+                        onValueChange = { field = it; onUrl(it.text) },
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         singleLine = true,
                         shape = RoundedCornerShape(22.dp),
@@ -487,7 +449,10 @@ private fun HomeScreen(
                                         onUrl(clip)
                                     }
                                 }) { Text("PASTE") }
-                                FilledIconButton(onClick = onGo, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)) {
+                                FilledIconButton(
+                                    onClick = onGo,
+                                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)
+                                ) {
                                     Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Go", tint = Color.White)
                                 }
                             }
@@ -496,17 +461,26 @@ private fun HomeScreen(
                 }
             }
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Mint),
+                    shape = RoundedCornerShape(28.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             PdmLogo(72)
                             Spacer(Modifier.width(14.dp))
-                            Column(Modifier.weight(1f)) {
+                            Column {
                                 Text("Ready to download?", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
                                 Text("HTTP/HTTPS, .torrent and magnet links.", color = Muted, fontSize = 14.sp)
                             }
                         }
-                        Button(onClick = onAddDownload, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) {
+                        Button(
+                            onClick = onAddDownload,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Green)
+                        ) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Add Download", fontWeight = FontWeight.Bold)
@@ -522,41 +496,41 @@ private fun HomeScreen(
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Recent History", modifier = Modifier.weight(1f), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
                     if (historyItems.isNotEmpty()) TextButton(onClick = onClearHistory) { Text("Clear all") }
                 }
                 if (historyItems.isEmpty()) {
-                    Text("Your visited links and searches will appear here.", color = Muted, fontSize = 14.sp)
+                    Text("Your visited links and searches will appear here.", color = Muted)
                 } else {
                     historyItems.take(6).forEach { item ->
-                        HistoryRow(item.url, onClick = { onHistoryClick(item.url) }, onDelete = { onHistoryDelete(item.url) })
+                        HistoryRow(item.url, { onHistoryClick(item.url) }, { onHistoryDelete(item.url) })
                     }
                 }
             }
-            item {
-                Text("Download Center", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Stat("Downloading", Icons.Default.Download, Modifier.weight(1f))
-                    Stat("Completed", Icons.Default.CheckCircle, Modifier.weight(1f))
-                    Stat("Failed", Icons.Default.ErrorOutline, Modifier.weight(1f))
-                }
-            }
         }
-        FloatingActionButton(onClick = onAddDownload, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 18.dp), containerColor = Blue, contentColor = Color.White) {
-            Icon(imageVector = Icons.Default.Download, contentDescription = "Add download")
-        }
+        FloatingActionButton(
+            onClick = onAddDownload,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 18.dp),
+            containerColor = Blue,
+            contentColor = Color.White
+        ) { Icon(imageVector = Icons.Default.Download, contentDescription = "Add download") }
     }
 }
 
 @Composable
 private fun HistoryRow(url: String, onClick: () -> Unit, onDelete: () -> Unit) {
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(17.dp), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = Icons.Default.Language, contentDescription = null, tint = Green, modifier = Modifier.size(25.dp))
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(17.dp),
+        elevation = CardDefaults.cardElevation(1.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(imageVector = Icons.Default.Language, contentDescription = null, tint = Green)
             Spacer(Modifier.width(10.dp))
-            Text(url, modifier = Modifier.weight(1f), maxLines = 2, fontSize = 13.sp, color = Dark)
+            Text(url, Modifier.weight(1f), maxLines = 2, fontSize = 13.sp)
             IconButton(onClick = onDelete) { Icon(imageVector = Icons.Default.Clear, contentDescription = "Delete", tint = Muted) }
         }
     }
@@ -573,17 +547,6 @@ private fun QuickAction(title: String, icon: ImageVector, onClick: () -> Unit, m
 }
 
 @Composable
-private fun Stat(title: String, icon: ImageVector, modifier: Modifier) {
-    Card(modifier = modifier, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
-        Column(Modifier.padding(13.dp)) {
-            Icon(imageVector = icon, contentDescription = null, tint = Green, modifier = Modifier.size(22.dp))
-            Text("0", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
-            Text(title, color = Muted, fontSize = 11.sp)
-        }
-    }
-}
-
-@Composable
 private fun DownloadsScreen(context: Context) {
     var files by remember { mutableStateOf<List<File>>(emptyList()) }
     LaunchedEffect(Unit) {
@@ -591,7 +554,11 @@ private fun DownloadsScreen(context: Context) {
             PdmStorage.ensureFolders(context).walkTopDown().filter { it.isFile }.take(200).toList()
         }
     }
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp), contentPadding = PaddingValues(top = 20.dp, bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(
+        Modifier.fillMaxSize().padding(horizontal = 18.dp),
+        contentPadding = PaddingValues(top = 20.dp, bottom = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         item {
             Text("Downloads", fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
             Text("PDM: ${PdmStorage.root(context).absolutePath}", color = Muted, fontSize = 12.sp)
@@ -608,7 +575,7 @@ private fun DownloadsScreen(context: Context) {
             }
         } else {
             items(files, key = { it.absolutePath }) { file ->
-                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp), modifier = Modifier.fillMaxWidth()) {
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Default.Storage, contentDescription = null, tint = Green, modifier = Modifier.size(30.dp))
                         Spacer(Modifier.width(12.dp))
@@ -633,57 +600,70 @@ private fun BrowserScreen(
     onOpen: (String) -> Unit
 ) {
     var address by remember(initialUrl) { mutableStateOf(TextFieldValue(initialUrl, TextRange(initialUrl.length))) }
-    var showHistory by remember { mutableStateOf(true) }
-    val focusRequester = remember { FocusRequester() }
-    val webUrl = normalizeBrowserUrl(initialUrl)
+    var showHistory by remember { mutableStateOf(false) }
+    var currentUrl by remember { mutableStateOf(normalizeBrowserUrl(initialUrl)) }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { }) { Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back") }
-            OutlinedTextField(
-                value = address,
-                onValueChange = { address = it; showHistory = false },
-                modifier = Modifier.weight(1f).focusRequester(focusRequester).onFocusChanged { state ->
-                    if (state.isFocused && address.text.isNotBlank()) address = address.copy(selection = TextRange(0, address.text.length))
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                placeholder = { Text("Search or enter address") },
-                leadingIcon = { Icon(imageVector = Icons.Default.Language, contentDescription = null) },
-                trailingIcon = {
-                    TextButton(onClick = {
-                        val clip = readClipboard(context)
-                        if (clip.isNotBlank()) address = TextFieldValue(clip, TextRange(clip.length))
-                        showHistory = false
-                    }) { Text("PASTE") }
-                }
-            )
-            Spacer(Modifier.width(5.dp))
-            FilledIconButton(onClick = {
-                val value = address.text.trim()
-                if (value.isNotBlank()) {
-                    onVisit(value)
-                    onOpen(value)
-                }
-                showHistory = false
-            }, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Blue)) {
-                Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Go", tint = Color.White)
+        Surface(color = Color(0xFF16A34A), shadowElevation = 3.dp) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { }) { Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White) }
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it; showHistory = true },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = RoundedCornerShape(28.dp),
+                    placeholder = { Text("Search or enter address", color = Color.White.copy(alpha = .75f)) },
+                    leadingIcon = { Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color.White) },
+                    trailingIcon = {
+                        TextButton(onClick = {
+                            val clip = readClipboard(context)
+                            if (clip.isNotBlank()) address = TextFieldValue(clip, TextRange(clip.length))
+                            showHistory = true
+                        }) { Text("PASTE", color = Color.White) }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.White,
+                        unfocusedBorderColor = Color.White.copy(alpha = .65f),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = Color.White
+                    )
+                )
+                IconButton(onClick = {
+                    val value = address.text.trim()
+                    if (value.isNotBlank()) {
+                        onVisit(value)
+                        currentUrl = normalizeBrowserUrl(value)
+                        onOpen(value)
+                    }
+                    showHistory = false
+                }) { Icon(imageVector = Icons.Default.ArrowForward, contentDescription = "Go", tint = Color.White) }
             }
         }
 
         if (showHistory && historyItems.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp), shape = RoundedCornerShape(20.dp)) {
+            Card(
+                Modifier.fillMaxWidth().padding(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(5.dp),
+                shape = RoundedCornerShape(18.dp)
+            ) {
                 Column(Modifier.padding(8.dp)) {
-                    Text("Recent history", modifier = Modifier.padding(10.dp), fontWeight = FontWeight.Bold, color = Dark)
+                    Text("Recent history", Modifier.padding(8.dp), fontWeight = FontWeight.Bold)
                     historyItems.take(8).forEach { item ->
-                        TextButton(onClick = {
-                            address = TextFieldValue(item.url, TextRange(item.url.length))
-                            onVisit(item.url)
-                            onOpen(item.url)
-                            showHistory = false
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Text(item.url, maxLines = 1, color = Dark)
-                        }
+                        TextButton(
+                            onClick = {
+                                address = TextFieldValue(item.url, TextRange(item.url.length))
+                                currentUrl = normalizeBrowserUrl(item.url)
+                                onVisit(item.url)
+                                showHistory = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(item.url, maxLines = 1, color = Dark) }
                     }
                 }
             }
@@ -715,12 +695,11 @@ private fun BrowserScreen(
                         onVisit(downloadUrl)
                         onDownload(downloadUrl)
                     }
-                    loadUrl(webUrl)
+                    loadUrl(currentUrl)
                 }
             },
             update = { view ->
-                val desired = normalizeBrowserUrl(address.text)
-                if (desired != view.url && desired.isNotBlank()) view.loadUrl(desired)
+                if (currentUrl != view.url && currentUrl.isNotBlank()) view.loadUrl(currentUrl)
             },
             modifier = Modifier.fillMaxSize()
         )
@@ -728,10 +707,22 @@ private fun BrowserScreen(
 }
 
 @Composable
-private fun SettingsScreen(context: Context, onStorageSettings: () -> Unit, historyItems: List<HistoryItem>, onClearHistory: () -> Unit) {
+private fun SettingsScreen(
+    context: Context,
+    onStorageSettings: () -> Unit,
+    historyItems: List<HistoryItem>,
+    onClearHistory: () -> Unit
+) {
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf("Current version $CURRENT_VERSION") }
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp), contentPadding = PaddingValues(top = 20.dp, bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    var updateUrl by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+
+    LazyColumn(
+        Modifier.fillMaxSize().padding(horizontal = 18.dp),
+        contentPadding = PaddingValues(top = 20.dp, bottom = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
         item { Text("Settings", fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, color = Dark) }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
@@ -768,13 +759,26 @@ private fun SettingsScreen(context: Context, onStorageSettings: () -> Unit, hist
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("App Update", fontWeight = FontWeight.Bold, fontSize = 19.sp)
                     Text(status, color = Muted)
-                    Button(onClick = {
-                        status = "Checking GitHub Releases…"
-                        scope.launch {
-                            val result = withContext(Dispatchers.IO) { checkLatestRelease() }
-                            status = result
-                        }
-                    }, colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Check for Updates") }
+                    Button(
+                        enabled = !checking,
+                        onClick = {
+                            checking = true
+                            status = "Checking PaliaAPK HUB…"
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { checkWebsiteUpdate() }
+                                status = result.first
+                                updateUrl = result.second
+                                checking = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Green)
+                    ) { Text(if (checking) "Checking…" else "Check for Updates") }
+                    if (updateUrl != null) {
+                        Button(
+                            onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Blue)
+                        ) { Text("Open Update") }
+                    }
                 }
             }
         }
@@ -788,6 +792,45 @@ private fun SettingsScreen(context: Context, onStorageSettings: () -> Unit, hist
             }
         }
     }
+}
+
+private suspend fun checkWebsiteUpdate(): Pair<String, String?> {
+    return try {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .build()
+        val request = Request.Builder()
+            .url(UPDATE_MANIFEST)
+            .header("Cache-Control", "no-cache")
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return "Update check failed: HTTP ${response.code}" to null
+            val json = JSONObject(response.body?.string().orEmpty())
+            val version = json.optString("version").removePrefix("v")
+            val url = json.optString("downloadUrl", WEBSITE_URL)
+            val notes = json.optString("notes")
+            if (version.isBlank()) return "No PDM version published on PaliaAPK HUB." to null
+            if (compareVersions(version, CURRENT_VERSION) > 0) {
+                "Update available: v$version${if (notes.isNotBlank()) " — $notes" else ""}" to url
+            } else {
+                "You are up to date ($CURRENT_VERSION)." to null
+            }
+        }
+    } catch (e: Throwable) {
+        "Update check failed: ${e.message ?: "network error"}" to null
+    }
+}
+
+private fun compareVersions(a: String, b: String): Int {
+    val aa = a.split('.').map { it.toIntOrNull() ?: 0 }
+    val bb = b.split('.').map { it.toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(aa.size, bb.size)) {
+        val x = aa.getOrElse(i) { 0 }
+        val y = bb.getOrElse(i) { 0 }
+        if (x != y) return x.compareTo(y)
+    }
+    return 0
 }
 
 private fun readClipboard(context: Context): String {
@@ -810,24 +853,4 @@ private fun isFileUrl(value: String): Boolean {
         ".jpg", ".jpeg", ".png", ".webp", ".gif", ".iso", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".torrent"
     )
     return extensions.any { path.endsWith(it) }
-}
-
-private suspend fun checkLatestRelease(): String {
-    return try {
-        val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
-        val request = Request.Builder()
-            .url("https://api.github.com/repos/shanpalia/Palia-Download-Manager/releases/latest")
-            .header("Accept", "application/vnd.github+json")
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (response.code == 404) return "No published GitHub release yet."
-            if (!response.isSuccessful) return "Update check failed: HTTP ${response.code}"
-            val tag = JSONObject(response.body?.string().orEmpty()).optString("tag_name")
-            if (tag.isBlank()) "No release version found."
-            else if (tag.removePrefix("v") == CURRENT_VERSION) "You are up to date ($CURRENT_VERSION)."
-            else "Latest release: $tag"
-        }
-    } catch (e: Throwable) {
-        "Update check failed: ${e.message ?: "network error"}"
-    }
 }
