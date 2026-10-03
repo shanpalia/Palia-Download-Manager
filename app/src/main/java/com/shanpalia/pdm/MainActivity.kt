@@ -34,6 +34,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardActions
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -217,10 +220,11 @@ private fun PdmApp(
             gesturesEnabled = true,
             drawerContent = {
                 ModalDrawerSheet(drawerContainerColor = Color.White, drawerTonalElevation = 2.dp) {
-                    Column(Modifier.fillMaxHeight().padding(top = 18.dp)) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Download, null, Modifier.size(36.dp), tint = Green)
-                            Spacer(Modifier.width(12.dp))
+                    Column(Modifier.fillMaxHeight().padding(top = 8.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { drawerScope.launch { drawerState.close() } }) { Icon(Icons.Default.Menu, "Close menu") }
+                            Icon(Icons.Default.Download, null, Modifier.size(34.dp), tint = Green)
+                            Spacer(Modifier.width(10.dp))
                             Column {
                                 Text("Palia Download Manager", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Dark)
                                 Text("Recent tabs", color = Muted, fontSize = 13.sp)
@@ -429,30 +433,68 @@ private fun BrowserScreen(context: Context, initialUrl: String, onHistory: (Stri
     var field by remember(initialUrl) { mutableStateOf(TextFieldValue(initialUrl, TextRange(initialUrl.length))) }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
+    fun submit() {
+        val v = field.text.trim()
+        if (v.isBlank()) return
+        onHistory(v)
+        if (v.startsWith("magnet:", true) || isDownloadLink(v)) {
+            onDownload(v)
+        } else {
+            webView?.loadUrl(normalizeUrl(v))
+        }
+    }
+
     LaunchedEffect(initialUrl) {
         if (initialUrl.isNotBlank()) webView?.loadUrl(normalizeUrl(initialUrl))
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onMenu) { Icon(Icons.Default.Menu, "Menu") }
-            OutlinedTextField(value = field, onValueChange = { field = it; onUrlChanged(it.text) }, modifier = Modifier.weight(1f).padding(end = 8.dp).height(52.dp), singleLine = true, shape = RoundedCornerShape(14.dp), placeholder = { Text("Paste here") }, leadingIcon = { Icon(Icons.Default.Language, null) }, trailingIcon = { IconButton(onClick = { val v = readClipboard(context); if (v.isNotBlank()) { field = TextFieldValue(v, TextRange(v.length)); onUrlChanged(v); if (isDownloadLink(v) || v.startsWith("magnet:", true)) onDownload(v) else webView?.loadUrl(normalizeUrl(v)) } }) { Icon(Icons.Default.ContentPaste, "Paste") } })
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Menu, "Menu") }
+            OutlinedTextField(
+                value = field,
+                onValueChange = { field = it; onUrlChanged(it.text) },
+                modifier = Modifier.weight(1f).height(54.dp),
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                placeholder = { Text("Paste here") },
+                leadingIcon = { Icon(Icons.Default.Language, null) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { submit() }),
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (field.text.isNotBlank()) {
+                            IconButton(onClick = { field = TextFieldValue(""); onUrlChanged("") }) { Icon(Icons.Default.Clear, "Clear") }
+                        }
+                        IconButton(onClick = {
+                            val v = readClipboard(context)
+                            if (v.isNotBlank()) {
+                                field = TextFieldValue(v, TextRange(v.length))
+                                onUrlChanged(v)
+                            }
+                        }) { Icon(Icons.Default.ContentPaste, "Paste") }
+                    }
+                }
+            )
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            IconButton(onClick = { webView?.goBack() }) { Icon(Icons.Default.ArrowBack, "Back") }
-            IconButton(onClick = { webView?.goForward() }) { Icon(Icons.Default.ArrowForward, "Forward") }
-            IconButton(onClick = { webView?.reload() }) { Icon(Icons.Default.Refresh, "Refresh") }
-            Button(onClick = { val v = field.text.trim(); if (v.isNotBlank()) { onHistory(v); if (isDownloadLink(v) || v.startsWith("magnet:", true)) onDownload(v) else webView?.loadUrl(normalizeUrl(v)) } }) { Text("GO") }
-        }
+
         AndroidView(factory = { ctx -> WebView(ctx).apply {
-            settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.allowFileAccess = true; settings.allowContentAccess = true
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val v = request.url.toString()
                     if (v.startsWith("magnet:", true) || isDownloadLink(v)) { onDownload(v); return true }
                     onHistory(v); field = TextFieldValue(v, TextRange(v.length)); onUrlChanged(v); return false
                 }
-                override fun onPageFinished(view: WebView, url: String) { if (url.isNotBlank()) { field = TextFieldValue(url, TextRange(url.length)); onUrlChanged(url) } }
+                override fun onPageFinished(view: WebView, url: String) {
+                    if (url.isNotBlank()) {
+                        field = TextFieldValue(url, TextRange(url.length))
+                        onUrlChanged(url)
+                    }
+                }
             }
             setDownloadListener(DownloadListener { url, _, _, _, _ -> onHistory(url); onDownload(url) })
             webView = this
