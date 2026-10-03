@@ -56,10 +56,7 @@ class DownloadService : Service() {
                     ACTION_TORRENT_MAGNET -> downloadMagnet(intent?.getStringExtra(EXTRA_URL).orEmpty())
                     ACTION_TORRENT_FILE -> downloadTorrentFile(File(intent?.getStringExtra(EXTRA_PATH).orEmpty()))
                     ACTION_TORRENT_URL -> downloadTorrentUrl(intent?.getStringExtra(EXTRA_URL).orEmpty())
-                    else -> downloadHttp(
-                        intent?.getStringExtra(EXTRA_URL).orEmpty(),
-                        intent?.getStringExtra(EXTRA_NAME)
-                    )
+                    else -> downloadHttp(intent?.getStringExtra(EXTRA_URL).orEmpty(), intent?.getStringExtra(EXTRA_NAME))
                 }
             } catch (t: Throwable) {
                 notify("Failed: ${t.message ?: "download error"}", 0, false)
@@ -83,116 +80,112 @@ class DownloadService : Service() {
             throw IllegalArgumentException("Only HTTP/HTTPS links are supported")
         }
 
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        val probe = (URL(url).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
             connectTimeout = 20_000
             readTimeout = 60_000
             setRequestProperty("Accept-Encoding", "identity")
             setRequestProperty("Connection", "close")
         }
-
         try {
-            connection.connect()
-            if (connection.responseCode !in 200..299) {
-                throw IllegalStateException("HTTP ${connection.responseCode}")
-            }
-
+            probe.connect()
+            if (probe.responseCode !in 200..299) throw IllegalStateException("HTTP ${probe.responseCode}")
             val guessed = requestedName?.takeIf { it.isNotBlank() }
-                ?: URLUtil.guessFileName(url, connection.getHeaderField("Content-Disposition"), connection.contentType)
+                ?: URLUtil.guessFileName(url, probe.getHeaderField("Content-Disposition"), probe.contentType)
             val fileName = guessed.ifBlank { PdmStorage.fileNameFromUrl(url) }
-            val category = PdmStorage.categoryFor(fileName)
-            val directory = File(PdmStorage.ensureFolders(this), category)
+            val directory = File(PdmStorage.ensureFolders(this), PdmStorage.categoryFor(fileName))
             val target = PdmStorage.uniqueFile(directory, fileName)
             val partial = File(target.parentFile, ".${target.name}.part")
             val existing = if (partial.exists()) partial.length() else 0L
+        } finally {
+            probe.disconnect()
+        }
 
-            connection.disconnect()
+        // Resolve the final name again without keeping a live probe connection.
+        val nameConnection = (URL(url).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 20_000
+            readTimeout = 60_000
+            setRequestProperty("Accept-Encoding", "identity")
+        }
+        val guessedName: String
+        try {
+            nameConnection.connect()
+            if (nameConnection.responseCode !in 200..299) throw IllegalStateException("HTTP ${nameConnection.responseCode}")
+            guessedName = requestedName?.takeIf { it.isNotBlank() }
+                ?: URLUtil.guessFileName(url, nameConnection.getHeaderField("Content-Disposition"), nameConnection.contentType).ifBlank { PdmStorage.fileNameFromUrl(url) }
+        } finally {
+            nameConnection.disconnect()
+        }
 
-            val resumeConnection = (URL(url).openConnection() as HttpURLConnection).apply {
-                instanceFollowRedirects = true
-                connectTimeout = 20_000
-                readTimeout = 60_000
-                setRequestProperty("Accept-Encoding", "identity")
-                setRequestProperty("Connection", "close")
-                if (existing > 0L) setRequestProperty("Range", "bytes=$existing-")
-            }
+        val directory = File(PdmStorage.ensureFolders(this), PdmStorage.categoryFor(guessedName))
+        val target = PdmStorage.uniqueFile(directory, guessedName)
+        val partial = File(target.parentFile, ".${target.name}.part")
+        val existing = if (partial.exists()) partial.length() else 0L
 
-            try {
-                resumeConnection.connect()
-                val response = resumeConnection.responseCode
-                val append = existing > 0L && response == HttpURLConnection.HTTP_PARTIAL
-                val startBytes = if (append) existing else 0L
-                if (!append && existing > 0L) partial.delete()
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 20_000
+            readTimeout = 60_000
+            setRequestProperty("Accept-Encoding", "identity")
+            setRequestProperty("Connection", "close")
+            if (existing > 0L) setRequestProperty("Range", "bytes=$existing-")
+        }
 
-                if (response !in 200..299) throw IllegalStateException("HTTP $response")
+        try {
+            connection.connect()
+            val response = connection.responseCode
+            val append = existing > 0L && response == HttpURLConnection.HTTP_PARTIAL
+            if (response !in 200..299) throw IllegalStateException("HTTP $response")
+            if (!append && existing > 0L) partial.delete()
 
-                val contentLength = resumeConnection.contentLengthLong
-                val total = if (contentLength > 0L) startBytes + contentLength else -1L
-                var done = startBytes
-                var lastNotify = 0L
+            val startBytes = if (append) existing else 0L
+            val contentLength = connection.contentLengthLong
+            val total = if (contentLength > 0L) startBytes + contentLength else -1L
+            var done = startBytes
+            var lastNotify = 0L
 
-                partial.outputStream().use { out ->
-                    if (append) {
-                        out.close()
-                        partial.outputStream().use { appendOut ->
-                            java.io.RandomAccessFile(partial, "rw").use { raf ->
-                                raf.seek(existing)
-                                resumeConnection.inputStream.use { input ->
-                                    copyStream(input, raf, total) { bytes ->
-                                        done = bytes
-                                        if (System.currentTimeMillis() - lastNotify > 700) {
-                                            lastNotify = System.currentTimeMillis()
-                                            val percent = if (total > 0) ((done * 100) / total).toInt() else 0
-                                            notify(fileName, percent, true)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        resumeConnection.inputStream.use { input ->
-                            val buffer = ByteArray(128 * 1024)
-                            var n: Int
-                            while (input.read(buffer).also { n = it } > 0) {
-                                out.write(buffer, 0, n)
-                                done += n
-                                if (System.currentTimeMillis() - lastNotify > 700) {
-                                    lastNotify = System.currentTimeMillis()
-                                    val percent = if (total > 0) ((done * 100) / total).toInt() else 0
-                                    notify(fileName, percent, true)
-                                }
+            if (append) {
+                java.io.RandomAccessFile(partial, "rw").use { raf ->
+                    raf.seek(existing)
+                    connection.inputStream.use { input ->
+                        val buffer = ByteArray(128 * 1024)
+                        var n: Int
+                        while (input.read(buffer).also { n = it } > 0) {
+                            raf.write(buffer, 0, n)
+                            done += n
+                            if (System.currentTimeMillis() - lastNotify > 700) {
+                                lastNotify = System.currentTimeMillis()
+                                notify(guessedName, if (total > 0) ((done * 100) / total).toInt() else 0, true)
                             }
                         }
                     }
                 }
-
-                if (target.exists()) target.delete()
-                if (!partial.renameTo(target)) {
-                    partial.copyTo(target, overwrite = true)
-                    partial.delete()
+            } else {
+                partial.outputStream().use { out ->
+                    connection.inputStream.use { input ->
+                        val buffer = ByteArray(128 * 1024)
+                        var n: Int
+                        while (input.read(buffer).also { n = it } > 0) {
+                            out.write(buffer, 0, n)
+                            done += n
+                            if (System.currentTimeMillis() - lastNotify > 700) {
+                                lastNotify = System.currentTimeMillis()
+                                notify(guessedName, if (total > 0) ((done * 100) / total).toInt() else 0, true)
+                            }
+                        }
+                    }
                 }
-                notify("Completed: ${target.name}", 100, false)
-            } finally {
-                resumeConnection.disconnect()
             }
+
+            if (target.exists()) target.delete()
+            if (!partial.renameTo(target)) {
+                partial.copyTo(target, overwrite = true)
+                partial.delete()
+            }
+            notify("Completed: ${target.name}", 100, false)
         } finally {
             connection.disconnect()
-        }
-    }
-
-    private fun copyStream(
-        input: java.io.InputStream,
-        raf: java.io.RandomAccessFile,
-        total: Long,
-        onProgress: (Long) -> Unit
-    ) {
-        val buffer = ByteArray(128 * 1024)
-        var done = raf.length()
-        var n: Int
-        while (input.read(buffer).also { n = it } > 0) {
-            raf.write(buffer, 0, n)
-            done += n
-            onProgress(done)
         }
     }
 
@@ -241,9 +234,7 @@ class DownloadService : Service() {
     }
 
     private fun downloadMagnet(magnet: String) {
-        if (!magnet.trim().startsWith("magnet:?", ignoreCase = true)) {
-            throw IllegalArgumentException("Invalid magnet link")
-        }
+        if (!magnet.trim().startsWith("magnet:?", ignoreCase = true)) throw IllegalArgumentException("Invalid magnet link")
         val tempDir = File(cacheDir, "magnet-metadata").apply { mkdirs() }
         val data = torrentSession.fetchMagnet(magnet.trim(), 60, tempDir)
             ?: throw IllegalStateException("Could not retrieve torrent metadata")
@@ -260,15 +251,10 @@ class DownloadService : Service() {
 
     private fun startTorrent(info: TorrentInfo) {
         val torrentRoot = File(PdmStorage.ensureFolders(this), "Torrents")
-        val safeName = info.name().replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank {
-            info.infoHash().toString()
-        }
-        val saveDir = File(PdmStorage.uniqueDirectory(torrentRoot, safeName)).apply { mkdirs() }
-
+        val safeName = info.name().replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { info.infoHash().toString() }
+        val saveDir = PdmStorage.uniqueDirectory(torrentRoot, safeName).apply { mkdirs() }
         torrentSession.download(info, saveDir)
-        val handle = waitForHandle(info.infoHash())
-            ?: throw IllegalStateException("Torrent could not be started")
-
+        val handle = waitForHandle(info.infoHash()) ?: throw IllegalStateException("Torrent could not be started")
         monitorTorrent(handle, info.name().ifBlank { safeName })
     }
 
@@ -285,10 +271,7 @@ class DownloadService : Service() {
         while (handle.isValid()) {
             val status = handle.status(true)
             val percent = (status.progress() * 100f).toInt().coerceIn(0, 100)
-            val speed = status.downloadRate()
-            val peers = status.numPeers()
-            notify("Torrent • $name • ${formatRate(speed)} • $peers peers", percent, true)
-
+            notify("Torrent • $name • ${formatRate(status.downloadRate())} • ${status.numPeers()} peers", percent, true)
             if (percent >= 100 || (status.totalWanted() > 0 && status.totalWantedDone() >= status.totalWanted())) {
                 notify("Torrent completed: $name", 100, false)
                 try { torrentSession.remove(handle) } catch (_: Throwable) { }
@@ -310,22 +293,14 @@ class DownloadService : Service() {
 
     private fun startAsForeground(notification: Notification) {
         if (Build.VERSION.SDK_INT >= 29) {
-            ServiceCompat.startForeground(
-                this,
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
     }
 
     private fun notify(text: String, percent: Int, ongoing: Boolean) {
-        getSystemService(NotificationManager::class.java).notify(
-            NOTIFICATION_ID,
-            notification(text, percent, ongoing)
-        )
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text, percent, ongoing))
     }
 
     private fun notification(text: String, percent: Int, ongoing: Boolean): Notification =
@@ -354,17 +329,4 @@ class DownloadService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-}
-
-private fun PdmStorage.uniqueDirectory(parent: File, requestedName: String): File {
-    parent.mkdirs()
-    val safe = requestedName.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "torrent" }
-    var result = File(parent, safe)
-    if (!result.exists()) return result
-    var index = 1
-    while (result.exists()) {
-        result = File(parent, "$safe ($index)")
-        index++
-    }
-    return result
 }
