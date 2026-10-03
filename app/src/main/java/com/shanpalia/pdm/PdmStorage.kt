@@ -67,6 +67,18 @@ object PdmStorage {
         return result
     }
 
+    fun uniqueDirectory(parent: File, requestedName: String): File {
+        parent.mkdirs()
+        val safe = requestedName.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "torrent" }
+        var result = File(parent, safe)
+        var index = 1
+        while (result.exists()) {
+            result = File(parent, "$safe ($index)")
+            index++
+        }
+        return result
+    }
+
     fun fileNameFromUrl(url: String): String {
         val clean = url.substringBefore('?').substringBefore('#')
         val name = clean.substringAfterLast('/').trim()
