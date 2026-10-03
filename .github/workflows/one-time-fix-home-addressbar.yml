@@ -1,0 +1,57 @@
+name: One-time Home Address Bar Fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-home-addressbar:
+    if: github.event.head_commit.message != 'fix: move home address bar above header'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Move address bar above header
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/shanpalia/pdm/MainActivity.kt')
+          text = path.read_text(encoding='utf-8')
+
+          home_start = text.index('@Composable\nprivate fun HomeScreen(')
+          home_end = text.index('@Composable\nprivate fun ActionCard', home_start)
+          section = text[home_start:home_end]
+
+          header_start = section.index('            item {\n                Row(verticalAlignment = Alignment.CenterVertically) {')
+          address_start = section.index('            item {\n                Card(\n                    colors = CardDefaults.cardColors(containerColor = Color.White)', header_start)
+          next_card = section.index('            item {\n                Card(colors = CardDefaults.cardColors(containerColor = Mint)', address_start)
+
+          header = section[header_start:address_start]
+          address = section[address_start:next_card]
+
+          # Chrome-like order: address/search bar first, PDM header immediately below it.
+          new_section = section[:header_start] + address + header + section[next_card:]
+          new_section = new_section.replace(
+              'contentPadding = PaddingValues(top = 18.dp, bottom = 105.dp)',
+              'contentPadding = PaddingValues(top = 8.dp, bottom = 105.dp)',
+              1
+          )
+
+          if new_section == section:
+              raise SystemExit('No change was made; expected HomeScreen layout markers were not found.')
+
+          path.write_text(text[:home_start] + new_section + text[home_end:], encoding='utf-8')
+
+      - name: Commit layout fix and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-time-fix-home-addressbar.yml
+          git add app/src/main/java/com/shanpalia/pdm/MainActivity.kt .github/workflows/one-time-fix-home-addressbar.yml
+          git commit -m "fix: move home address bar above header"
+          git push
