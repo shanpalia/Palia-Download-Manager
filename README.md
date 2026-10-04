@@ -26,3 +26,5 @@ Android download manager + built-in browser by Shanpalia.
 GitHub Actions builds a debug APK on pushes to `main` and manual workflow dispatch.
 
 Developer By Shanpalia
+
+<!-- Clean build trigger: 2026-10-04 -->
