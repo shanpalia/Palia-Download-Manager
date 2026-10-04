@@ -1,0 +1,72 @@
+name: PDM Home Polish
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Polish PDM address bar and quick access'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Patch PDM home UI
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt')
+          s = p.read_text()
+
+          # Address bar: replace the text Download button with a green arrow icon.
+          old = '''trailingIcon = { Button(onClick = onGo, shape = RoundedCornerShape(24.dp), contentPadding = PaddingValues(horizontal = 18.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Download") } },'''
+          new = '''trailingIcon = { IconButton(onClick = onGo, modifier = Modifier.size(50.dp)) { Icon(Icons.Default.ArrowDownward, contentDescription = "Download", tint = Green, modifier = Modifier.size(30.dp)) } },'''
+          if old not in s:
+              raise SystemExit('AddressBar pattern not found')
+          s = s.replace(old, new, 1)
+
+          # Apps and Games quick access both open the user's PaliaAPK HUB site inside PDM.
+          hub = 'https://shanpalia.github.io/WebsitePaliaAPK_V.2/'
+          s = s.replace('HomeTile("Apps", Icons.Default.Android, Color(0xFFE9FFF6), Modifier.weight(1f)) { openBrowser("https://www.google.com") }',
+                        f'HomeTile("Apps", Icons.Default.Android, Color(0xFFE9FFF6), Modifier.weight(1f)) {{ openBrowser("{hub}") }}')
+          s = s.replace('HomeTile("Games", Icons.Default.SportsEsports, Color(0xFFF4F4F4), Modifier.weight(1f)) { openBrowser("https://www.google.com") }',
+                        f'HomeTile("Games", Icons.Default.SportsEsports, Color(0xFFF4F4F4), Modifier.weight(1f)) {{ openBrowser("{hub}") }}')
+
+          # Add a Recent tab header to the History screen without changing the stored history implementation.
+          marker = '@Composable private fun HistoryScreen(activity: ComponentActivity) {'
+          if marker in s and 'Text("Recent",' not in s:
+              replacement = marker + '''\n    Column(Modifier.fillMaxSize().background(Color.White)) {\n        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {\n            Surface(shape = RoundedCornerShape(22.dp), color = Mint) {\n                Text("Recent", modifier = Modifier.padding(horizontal = 20.dp, vertical = 9.dp), color = Green, fontWeight = FontWeight.Bold)\n            }\n        }\n'''
+              # Wrap only the existing function body in the new Column by inserting before its first body content.
+              s = s.replace(marker, replacement, 1)
+              # Close the wrapper immediately before the next top-level composable declaration.
+              next_comp = re.search(r'\n@Composable private fun ', s[s.index(replacement)+len(replacement):])
+              if next_comp:
+                  pos = s.index(replacement)+len(replacement)+next_comp.start()
+                  s = s[:pos] + '\n    }\n' + s[pos:]
+
+          p.write_text(s)
+          PY
+
+      - name: Verify changes
+        run: |
+          grep -Fq 'contentDescription = "Download"' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          grep -Fq 'WebsitePaliaAPK_V.2/' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          grep -Fq 'Text("Recent"' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+          else
+            git commit -m "Polish PDM address bar and quick access"
+            git push
+          fi
