@@ -1,0 +1,160 @@
+name: Apply Recent History Patch
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  patch:
+    if: !contains(github.event.head_commit.message, '[recent-history-patched]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch PDM recent history
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt')
+          s = p.read_text()
+
+          s = s.replace('import org.json.JSONObject\n', 'import org.json.JSONObject\nimport org.json.JSONArray\n')
+          s = s.replace('import java.net.URL\n', 'import java.net.URL\nimport java.text.SimpleDateFormat\nimport java.util.Date\nimport java.util.Locale\n')
+
+          marker = 'private data class UpdateInfo(val available: Boolean, val version: String, val url: String?)\n'
+          helpers = r'''
+private data class SiteVisit(val url: String, val host: String, val time: Long)
+private const val VISIT_PREFS = "pdm_recent_visits"
+private const val VISIT_KEY = "sites"
+
+private fun saveSiteVisit(context: Context, rawUrl: String) {
+    val url = rawUrl.trim()
+    if (!(url.startsWith("http://", true) || url.startsWith("https://", true))) return
+    val uri = try { Uri.parse(url) } catch (_: Throwable) { return }
+    val host = uri.host?.lowercase(Locale.getDefault()) ?: return
+    if (host.isBlank()) return
+    val prefs = context.getSharedPreferences(VISIT_PREFS, Context.MODE_PRIVATE)
+    val old = try { JSONArray(prefs.getString(VISIT_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+    val out = JSONArray()
+    out.put(JSONObject().apply { put("url", url); put("host", host); put("time", System.currentTimeMillis()) })
+    for (i in 0 until old.length()) {
+        val item = old.optJSONObject(i) ?: continue
+        if (item.optString("host") == host) continue
+        out.put(item)
+        if (out.length() >= 50) break
+    }
+    prefs.edit().putString(VISIT_KEY, out.toString()).apply()
+}
+
+private fun loadSiteVisits(context: Context): List<SiteVisit> {
+    val prefs = context.getSharedPreferences(VISIT_PREFS, Context.MODE_PRIVATE)
+    val array = try { JSONArray(prefs.getString(VISIT_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+    return buildList {
+        for (i in 0 until array.length()) {
+            val o = array.optJSONObject(i) ?: continue
+            val url = o.optString("url", "")
+            val host = o.optString("host", "")
+            if (url.isNotBlank() && host.isNotBlank()) add(SiteVisit(url, host, o.optLong("time", 0L)))
+        }
+    }
+}
+
+private fun clearSiteVisits(context: Context) {
+    context.getSharedPreferences(VISIT_PREFS, Context.MODE_PRIVATE).edit().remove(VISIT_KEY).apply()
+}
+'''
+          if 'private data class SiteVisit' not in s:
+              s = s.replace(marker, marker + helpers + '\n')
+
+          old_browser = '''@Composable private fun BrowserScreen(initial: String, onUrl: (String) -> Unit, onDownload: (String) -> Unit, onExit: () -> Unit) {
+    var field by remember(initial) { mutableStateOf(initial) }
+    var web by remember { mutableStateOf<WebView?>(null) }
+    BackHandler { if (web?.canGoBack() == true) web?.goBack() else onExit() }
+'''
+          new_browser = '''@Composable private fun BrowserScreen(initial: String, onUrl: (String) -> Unit, onDownload: (String) -> Unit, onExit: () -> Unit) {
+    val context = LocalContext.current
+    var field by remember(initial) { mutableStateOf(initial) }
+    var web by remember { mutableStateOf<WebView?>(null) }
+    BackHandler { if (web?.canGoBack() == true) web?.goBack() else onExit() }
+'''
+          s = s.replace(old_browser, new_browser)
+          s = s.replace('override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl) }', 'override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl); saveSiteVisit(context, pageUrl) }')
+
+          start = s.index('@Composable private fun HistoryScreen(context: Context) {')
+          end = s.index('\n@Composable private fun FileIcon', start)
+          history = r'''@Composable private fun HistoryScreen(context: Context) {
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var files by remember { mutableStateOf<List<File>>(emptyList()) }
+    var visits by remember { mutableStateOf<List<SiteVisit>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            files = PdmStorage.allFiles(context)
+            visits = loadSiteVisits(context)
+            delay(1000)
+        }
+    }
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        PdmHeader("History", "Recent activity in PDM")
+        TabRow(selectedTabIndex = tab, containerColor = Color.White, contentColor = Green) {
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Recent") })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Downloads") })
+        }
+        if (tab == 0) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Sites visited in PDM Browser", Modifier.weight(1f), color = Dark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                if (visits.isNotEmpty()) TextButton(onClick = { clearSiteVisits(context); visits = emptyList() }) { Text("Clear") }
+            }
+            if (visits.isEmpty()) EmptyState("No recent sites", "Websites you open in the PDM Browser will appear here.")
+            else LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(visits, key = { it.url + it.time }) { visit ->
+                    Card(Modifier.fillMaxWidth().clickable { /* Browser is reopened from the browser address bar. */ }, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(Modifier.size(46.dp), shape = RoundedCornerShape(13.dp), color = Mint) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Language, null, tint = GreenDark) } }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(visit.host, color = Dark, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(visit.url, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(visit.time)), color = Muted, fontSize = 11.sp)
+                            }
+                            Icon(Icons.Default.ChevronRight, null, tint = Muted)
+                        }
+                    }
+                }
+            }
+        } else {
+            if (files.isEmpty()) EmptyState("No download history", "Completed downloads will appear here.")
+            else LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(files, key = { "history-${it.absolutePath}" }) { file ->
+                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            FileIcon(file.name)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Dark)
+                                Text("Completed • ${file.length()} bytes", color = Muted, fontSize = 12.sp)
+                            }
+                            Icon(Icons.Default.MoreVert, null, tint = Muted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+'''
+          s = s[:start] + history + s[end:]
+
+          s = s.replace('RecentCard("Download History", Icons.Default.History, history)', 'RecentCard("Recent", Icons.Default.History, history)')
+          p.write_text(s)
+      - name: Verify Kotlin source
+        run: grep -nE 'SiteVisit|Sites visited in PDM Browser|Tab\(|saveSiteVisit|PdmHeader\("History"' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "Add Recent site visit history [recent-history-patched]"
+          git push
