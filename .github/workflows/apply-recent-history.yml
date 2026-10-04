@@ -6,23 +6,20 @@ on:
 
 jobs:
   patch:
-    if: !contains(github.event.head_commit.message, '[recent-history-patched]')
+    if: ${{ !contains(github.event.head_commit.message, '[recent-history-patched]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
       - name: Patch PDM recent history
         shell: python
         run: |
           from pathlib import Path
           p = Path('app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt')
           s = p.read_text()
-
           s = s.replace('import org.json.JSONObject\n', 'import org.json.JSONObject\nimport org.json.JSONArray\n')
           s = s.replace('import java.net.URL\n', 'import java.net.URL\nimport java.text.SimpleDateFormat\nimport java.util.Date\nimport java.util.Locale\n')
-
           marker = 'private data class UpdateInfo(val available: Boolean, val version: String, val url: String?)\n'
           helpers = r'''
 private data class SiteVisit(val url: String, val host: String, val time: Long)
@@ -67,7 +64,6 @@ private fun clearSiteVisits(context: Context) {
 '''
           if 'private data class SiteVisit' not in s:
               s = s.replace(marker, marker + helpers + '\n')
-
           old_browser = '''@Composable private fun BrowserScreen(initial: String, onUrl: (String) -> Unit, onDownload: (String) -> Unit, onExit: () -> Unit) {
     var field by remember(initial) { mutableStateOf(initial) }
     var web by remember { mutableStateOf<WebView?>(null) }
@@ -81,7 +77,6 @@ private fun clearSiteVisits(context: Context) {
 '''
           s = s.replace(old_browser, new_browser)
           s = s.replace('override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl) }', 'override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl); saveSiteVisit(context, pageUrl) }')
-
           start = s.index('@Composable private fun HistoryScreen(context: Context) {')
           end = s.index('\n@Composable private fun FileIcon', start)
           history = r'''@Composable private fun HistoryScreen(context: Context) {
@@ -109,7 +104,7 @@ private fun clearSiteVisits(context: Context) {
             if (visits.isEmpty()) EmptyState("No recent sites", "Websites you open in the PDM Browser will appear here.")
             else LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(visits, key = { it.url + it.time }) { visit ->
-                    Card(Modifier.fillMaxWidth().clickable { /* Browser is reopened from the browser address bar. */ }, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
+                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
                         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                             Surface(Modifier.size(46.dp), shape = RoundedCornerShape(13.dp), color = Mint) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Language, null, tint = GreenDark) } }
                             Spacer(Modifier.width(12.dp))
@@ -145,7 +140,6 @@ private fun clearSiteVisits(context: Context) {
 }
 '''
           s = s[:start] + history + s[end:]
-
           s = s.replace('RecentCard("Download History", Icons.Default.History, history)', 'RecentCard("Recent", Icons.Default.History, history)')
           p.write_text(s)
       - name: Verify Kotlin source
