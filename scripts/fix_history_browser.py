@@ -11,6 +11,13 @@ text = text.replace(
     '"History" -> HistoryScreen(activity) { target -> browserUrl = target; screen = "Browser" }'
 )
 
+# Kotlin does not allow two trailing lambdas. Keep all BrowserScreen callbacks
+# inside the parenthesized argument list so the source compiles reliably.
+text = text.replace(
+    '"Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }) { screen = "Home" }',
+    '"Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }, { screen = "Home" })'
+)
+
 # Replace the browser implementation produced by the older patcher. Facebook must
 # remain in the embedded WebView; do not launch Custom Tabs or the Facebook app.
 start = text.find('@Composable\nprivate fun BrowserScreen(')
@@ -88,19 +95,14 @@ private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onD
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val target = request.url.toString()
                             if (target.startsWith("http://", true) || target.startsWith("https://", true)) {
-                                // Every normal HTTPS page, including Facebook, stays in PDM.
                                 return false
                             }
-
-                            // Never hand Facebook's app schemes to Android. Keep the user in PDM.
                             if (target.startsWith("sfilvavs://", true) ||
                                 target.startsWith("fb://", true) ||
                                 target.startsWith("fb-messenger://", true)) {
                                 view.loadUrl("https://www.facebook.com/")
                                 return true
                             }
-
-                            // Ignore other app-only schemes rather than launching another app.
                             return true
                         }
 
