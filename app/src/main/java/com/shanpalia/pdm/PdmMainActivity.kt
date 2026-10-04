@@ -54,6 +54,7 @@ private val Blue = Color(0xFF1769D5)
 private val Dark = Color(0xFF12231E)
 private val Muted = Color(0xFF6F7D77)
 private val Mint = Color(0xFFE9FFF6)
+private val BrandPurple = Color(0xFFE8D9FF)
 private const val UPDATE_URL = "https://shanpalia.github.io/WebsitePaliaAPK_V.2/pdm-update.json"
 
 private data class UpdateInfo(val available: Boolean, val version: String, val url: String?)
@@ -175,7 +176,7 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
                     NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) {
                         PdmNavigationBarItem(selected = screen == "Home", onClick = { screen = "Home" }, icon = { Icon(Icons.Default.Home, null) })
                         PdmNavigationBarItem(selected = screen == "Downloads", onClick = { screen = "Downloads" }, icon = { Icon(Icons.Default.Download, null) })
-                        PdmNavigationBarItem(selected = screen == "Browser", onClick = { screen = "Browser" }, icon = { Icon(Icons.Default.Web, null) })
+                        PdmNavigationBarItem(selected = screen == "Browser", onClick = { screen = "Browser" }, icon = { Icon(Icons.Default.Language, null) })
                         PdmNavigationBarItem(selected = screen == "Settings", onClick = { screen = "Settings" }, icon = { Icon(Icons.Default.Settings, null) })
                     }
                 }
@@ -261,11 +262,126 @@ private fun loadBrowser(value: String, web: WebView?) { val v = value.trim(); if
     var status by rememberSaveable { mutableStateOf("Not checked") }
     var version by rememberSaveable { mutableStateOf("") }
     var updateUrl by rememberSaveable { mutableStateOf("") }
-    Column(modifier = Modifier.fillMaxSize()) { Text("Settings", fontSize = 24.sp, color = Dark, modifier = Modifier.padding(20.dp)); Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Button(onClick = onStorage, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Folder, null); Spacer(Modifier.width(8.dp)); Text("Storage access") }
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("App updates", fontSize = 18.sp, color = Dark); Text(if (status == "Not checked") "Check your Palia website for updates." else status, color = Muted); if (version.isNotBlank()) Text("Website version: $version", color = Dark); Button(enabled = !checking, onClick = { scope.launch { checking = true; status = "Checking website…"; val r = checkPdmUpdate(); if (r == null) { status = "Could not check for updates"; version = ""; updateUrl = "" } else if (r.available) { status = "Update available • v${r.version}"; version = r.version; updateUrl = r.url ?: "" } else { status = "Up to date • v${BuildConfig.VERSION_NAME}"; version = r.version; updateUrl = "" }; checking = false } }, modifier = Modifier.fillMaxWidth()) { Text(if (checking) "Checking…" else "Check for updates") }; if (updateUrl.isNotBlank()) Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Open update") } } }
-        Text("PDM • v${BuildConfig.VERSION_NAME}", color = Muted); Text("Developer by shanpalia", color = Muted)
-    } }
+
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color.White).padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Spacer(Modifier.height(14.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Mint)
+        ) {
+            Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                AndroidView(factory = { ImageView(it).apply { setImageResource(R.mipmap.ic_pdm_logo) } }, modifier = Modifier.size(62.dp))
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text("PDM", fontSize = 27.sp, color = Dark)
+                    Text("PaliaAPK HUB", fontSize = 17.sp, color = Green)
+                    Text("Download Manager", fontSize = 13.sp, color = Muted)
+                }
+            }
+        }
+
+        Text("Settings", fontSize = 30.sp, color = Dark)
+
+        Button(
+            onClick = onStorage,
+            modifier = Modifier.fillMaxWidth().height(54.dp),
+            shape = RoundedCornerShape(27.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Green)
+        ) {
+            Icon(Icons.Default.Folder, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Storage access", fontSize = 16.sp)
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Mint),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SystemUpdate, null, tint = Green, modifier = Modifier.size(30.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("App updates", fontSize = 20.sp, color = Dark)
+                        Text("Official Palia website", fontSize = 13.sp, color = Muted)
+                    }
+                }
+                Text(
+                    when {
+                        status == "Not checked" -> "Check your Palia website for the latest PDM release."
+                        status.startsWith("Update available") -> status
+                        else -> status
+                    },
+                    color = if (status.startsWith("Update available")) Blue else Muted,
+                    fontSize = 15.sp
+                )
+                if (version.isNotBlank()) {
+                    Text("Website version: $version", color = Dark, fontSize = 14.sp)
+                }
+                Button(
+                    enabled = !checking,
+                    onClick = {
+                        scope.launch {
+                            checking = true
+                            status = "Checking website…"
+                            val r = checkPdmUpdate()
+                            if (r == null) {
+                                status = "Could not check for updates"
+                                version = ""
+                                updateUrl = ""
+                            } else if (r.available) {
+                                status = "Update available • v${r.version}"
+                                version = r.version
+                                updateUrl = r.url ?: ""
+                            } else {
+                                status = "Up to date • v${BuildConfig.VERSION_NAME}"
+                                version = r.version
+                                updateUrl = ""
+                            }
+                            checking = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(25.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (checking) "Checking…" else "Check for updates")
+                }
+                if (updateUrl.isNotBlank()) {
+                    Button(
+                        onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(25.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Blue)
+                    ) {
+                        Icon(Icons.Default.Download, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Open update")
+                    }
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFA))
+        ) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("PDM", fontSize = 18.sp, color = Dark)
+                Text("By PaliaAPK HUB", color = Green, fontSize = 16.sp)
+                Text("Developer by shanpalia", color = Muted, fontSize = 14.sp)
+                Text("Version ${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 13.sp)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+    }
 }
 
 @Composable private fun Splash() { Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) { AndroidView(factory = { ImageView(it).apply { setImageResource(R.mipmap.ic_pdm_logo) } }, modifier = Modifier.size(104.dp)); Text("PDM", fontSize = 28.sp, color = Dark); Text("By PaliaAPK HUB", color = Green); Text("Developer by shanpalia", color = Muted, fontSize = 13.sp); LinearProgressIndicator(modifier = Modifier.width(150.dp), color = Green) } } }
