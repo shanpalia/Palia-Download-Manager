@@ -6,6 +6,7 @@ KOTLIN = ROOT / "app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt"
 NEW_BROWSER = r'''
 @Composable
 private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onDownload: (String) -> Unit, onBack: () -> Unit) {
+    val context = LocalContext.current
     var address by rememberSaveable(initialUrl) { mutableStateOf(initialUrl.ifBlank { "https://www.google.com" }) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
@@ -69,7 +70,41 @@ private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onD
                     isHorizontalScrollBarEnabled = false
                     overScrollMode = View.OVER_SCROLL_NEVER
                     webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = false
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                            val target = request.url.toString()
+                            if (target.startsWith("http://", true) || target.startsWith("https://", true)) return false
+
+                            // Facebook and some other sites use app-only deep links. Never let
+                            // an unsupported scheme reach WebView, otherwise it shows
+                            // ERR_UNKNOWN_URL_SCHEME. Fall back to the mobile web page.
+                            if (target.startsWith("sfilvavs://", true) ||
+                                target.startsWith("fb://", true) ||
+                                target.startsWith("fb-messenger://", true)) {
+                                view.loadUrl("https://m.facebook.com/")
+                                return true
+                            }
+
+                            // Handle Android intent:// links when the target app is installed.
+                            if (target.startsWith("intent://", true)) {
+                                try {
+                                    val intent = Intent.parseUri(target, Intent.URI_INTENT_SCHEME)
+                                    context.startActivity(intent)
+                                } catch (_: Throwable) {
+                                    val fallback = try {
+                                        Uri.parse(target).getQueryParameter("browser_fallback_url")
+                                    } catch (_: Throwable) { null }
+                                    if (!fallback.isNullOrBlank()) view.loadUrl(fallback)
+                                }
+                                return true
+                            }
+
+                            // tel:, mailto:, market: etc. can be handled by Android apps.
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, request.url))
+                            } catch (_: Throwable) { }
+                            return true
+                        }
+
                         override fun onPageFinished(view: WebView, pageUrl: String) {
                             super.onPageFinished(view, pageUrl)
                             if (pageUrl.startsWith("http://", true) || pageUrl.startsWith("https://", true)) {
@@ -187,10 +222,32 @@ def find_function(text, name):
     raise SystemExit(f"Unbalanced braces in {name}")
 
 text = KOTLIN.read_text(encoding="utf-8")
-text = text.replace('"History" -> HistoryScreen(activity)', '"History" -> HistoryScreen(activity) { target -> browserUrl = target; screen = "Browser" }')
+
+# History cards must reopen the exact URL in the PDM Browser.
+text = text.replace(
+    '"History" -> HistoryScreen(activity)',
+    '"History" -> HistoryScreen(activity) { target -> browserUrl = target; screen = "Browser" }'
+)
+
+# Remove TikTok from Quick Access because it is not available in India.
+tiktok_old = 'BrandHomeTile("TikTok", R.drawable.ic_brand_tiktok, Color(0xFFEFF5FF), Modifier.weight(1f)) { openBrowser("https://www.tiktok.com") }'
+tiktok_new = 'HomeTile("Moj", Icons.Default.PlayCircle, Color(0xFFEFF5FF), Modifier.weight(1f)) { openBrowser("https://mojapp.in/") }'
+text = text.replace(tiktok_old, tiktok_new)
+
+# Replace the remaining generic Quick Access tile with useful working services.
+games_old = 'HomeTile("Games", Icons.Default.SportsEsports, Color(0xFFF1F3F5), Modifier.weight(1f)) { openBrowser("https://shanpalia.github.io/WebsitePaliaAPK_V.2/") }'
+games_new = 'HomeTile("Josh", Icons.Default.PlayCircle, Color(0xFFF1F3F5), Modifier.weight(1f)) { openBrowser("https://myjosh.in/") }'
+text = text.replace(games_old, games_new)
+
+torrent_old = 'HomeTile("Torrent", Icons.Default.CloudDownload, Color(0xFFF6F6F6), Modifier.weight(1f)) { torrent() }'
+torrent_new = 'HomeTile("Reddit", Icons.Default.Forum, Color(0xFFF6F6F6), Modifier.weight(1f)) { openBrowser("https://www.reddit.com/") }'
+text = text.replace(torrent_old, torrent_new)
+
 start, end = find_function(text, "BrowserScreen")
 text = text[:start] + NEW_BROWSER.strip() + text[end:]
+
 start, end = find_function(text, "HistoryScreen")
 text = text[:start] + NEW_HISTORY.strip() + text[end:]
+
 KOTLIN.write_text(text, encoding="utf-8")
-print("PDM source patched: Chrome-compatible WebView, Facebook support, clickable Recent history")
+print("PDM source patched: Facebook deep-link fallback, Chrome-style WebView, clickable Recent history, and India-safe Quick Access")
