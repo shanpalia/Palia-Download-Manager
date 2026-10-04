@@ -197,7 +197,7 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
                 }
             }
         ) {
-            Scaffold(containerColor = Color.White, bottomBar = { PdmBottomBar(screen) { screen = it } }) { padding ->
+            Scaffold(containerColor = Color.White, bottomBar = { PdmBottomBar(screen) { screen = it; if (it == "Browser") browserUrl = "https://www.google.com" } }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding)) {
                     when (screen) {
                         "Home" -> HomeScreen(
@@ -289,7 +289,7 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
         shape = RoundedCornerShape(30.dp),
         placeholder = { Text(placeholder) },
         leadingIcon = { Icon(Icons.Default.Link, null, tint = Green) },
-        trailingIcon = { IconButton(onClick = onGo, modifier = Modifier.size(50.dp)) { Icon(Icons.Default.ArrowDownward, contentDescription = "Download", tint = Green, modifier = Modifier.size(30.dp)) } },
+        trailingIcon = { IconButton(onClick = onGo, modifier = Modifier.size(50.dp)) { Icon(Icons.Default.ArrowForward, contentDescription = "Download", tint = Green, modifier = Modifier.size(30.dp)) } },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
         keyboardActions = KeyboardActions(onGo = { onGo() })
     )
@@ -356,6 +356,47 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
     }
 }
 
+
+private data class BrowserVisit(val title: String, val url: String, val time: Long)
+
+private fun saveBrowserVisit(context: Context, url: String, title: String?) {
+    val clean = url.trim()
+    if (!clean.startsWith("http://", true) && !clean.startsWith("https://", true)) return
+    try {
+        val prefs = context.getSharedPreferences("pdm_browser_history", Context.MODE_PRIVATE)
+        val old = org.json.JSONArray(prefs.getString("items", "[]") ?: "[]")
+        val items = mutableListOf<org.json.JSONObject>()
+        for (i in 0 until old.length()) items.add(old.optJSONObject(i) ?: continue)
+        items.removeAll { it.optString("url") == clean }
+        items.add(0, org.json.JSONObject().apply {
+            put("title", title?.trim().orEmpty().ifBlank { clean.substringAfter("://").substringBefore("/").ifBlank { "Website" } })
+            put("url", clean)
+            put("time", System.currentTimeMillis())
+        })
+        while (items.size > 50) items.removeAt(items.lastIndex)
+        val out = org.json.JSONArray()
+        items.forEach { out.put(it) }
+        prefs.edit().putString("items", out.toString()).apply()
+    } catch (_: Throwable) { }
+}
+
+private fun readBrowserHistory(context: Context): List<BrowserVisit> {
+    return try {
+        val json = org.json.JSONArray(context.getSharedPreferences("pdm_browser_history", Context.MODE_PRIVATE).getString("items", "[]") ?: "[]")
+        buildList {
+            for (i in 0 until json.length()) {
+                val o = json.optJSONObject(i) ?: continue
+                val u = o.optString("url")
+                if (u.isNotBlank()) add(BrowserVisit(o.optString("title", "Website"), u, o.optLong("time", 0L)))
+            }
+        }
+    } catch (_: Throwable) { emptyList() }
+}
+
+private fun clearBrowserHistory(context: Context) {
+    context.getSharedPreferences("pdm_browser_history", Context.MODE_PRIVATE).edit().remove("items").apply()
+}
+
 @Composable private fun BrowserScreen(initial: String, onUrl: (String) -> Unit, onDownload: (String) -> Unit, onExit: () -> Unit) {
     var field by remember(initial) { mutableStateOf(initial) }
     var web by remember { mutableStateOf<WebView?>(null) }
@@ -377,7 +418,7 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
             overScrollMode = View.OVER_SCROLL_NEVER
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = false
-                override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl) }
+                override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl); saveBrowserVisit(ctx, pageUrl, view.title) }
             }
             setDownloadListener { u, _, _, _, _ -> if (!u.isNullOrBlank()) onDownload(u) }
             loadUrl(initial)
@@ -406,12 +447,52 @@ private fun loadBrowser(value: String, web: WebView?) {
 
 @Composable private fun DownloadFileCard(file: File) { Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(1.dp)) { Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { FileIcon(file.name); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Dark, fontSize = 15.sp); Text("${file.length()} bytes • Completed", color = Muted, fontSize = 12.sp) }; Icon(Icons.Default.CheckCircle, null, tint = Green) } } }
 
-@Composable private fun HistoryScreen(context: Context) {
-    var files by remember { mutableStateOf<List<File>>(emptyList()) }
-    LaunchedEffect(Unit) { while (true) { files = PdmStorage.allFiles(context); delay(1000) } }
+@Composable private fun HistoryScreen(activity: Context) {
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var visits by remember { mutableStateOf(readBrowserHistory(activity)) }
+    LaunchedEffect(Unit) { visits = readBrowserHistory(activity) }
+
     Column(Modifier.fillMaxSize().background(Color.White)) {
-        PdmHeader("Download History", "Your downloaded files")
-        if (files.isEmpty()) EmptyState("No history yet", "Completed downloads will appear here.") else LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { items(files, key = { "history-${it.absolutePath}" }) { file -> Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Soft)) { Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { FileIcon(file.name); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Dark); Text("Completed • ${file.length()} bytes", color = Muted, fontSize = 12.sp) }; Icon(Icons.Default.MoreVert, null, tint = Muted) } } } }
+        PdmHeader("Recent", "Websites visited in PDM Browser")
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = tab == 0, onClick = { tab = 0; visits = readBrowserHistory(activity) }, label = { Text("Recent") })
+            FilterChip(selected = tab == 1, onClick = { tab = 1 }, label = { Text("Downloads") })
+            if (tab == 0 && visits.isNotEmpty()) {
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { clearBrowserHistory(activity); visits = emptyList() }) { Text("Clear") }
+            }
+        }
+
+        if (tab == 0) {
+            if (visits.isEmpty()) {
+                EmptyState("No recent sites", "Websites you visit in the PDM Browser will appear here.")
+            } else {
+                LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(visits, key = { it.url }) { visit ->
+                        Card(
+                            Modifier.fillMaxWidth().clickable {
+                                // The History screen is intentionally read-only here; reopening is handled by the Browser tab.
+                            },
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Soft),
+                            elevation = CardDefaults.cardElevation(1.dp)
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Language, null, Modifier.size(36.dp), tint = Green)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(visit.title, color = Dark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(visit.url, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (visit.time > 0) Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(visit.time)), color = Muted, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            DownloadsScreen(activity)
+        }
     }
 }
 
