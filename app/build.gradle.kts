@@ -12,8 +12,8 @@ android {
         applicationId = "com.shanpalia.pdm"
         minSdk = 28
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
     }
 
     buildFeatures {
@@ -50,4 +50,16 @@ dependencies {
     implementation("org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0-39")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+tasks.register("patchPdmSource") {
+    doLast {
+        exec {
+            commandLine("python3", rootProject.file("scripts/fix_pdm.py").absolutePath)
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn("patchPdmSource")
 }
