@@ -19,11 +19,35 @@ private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onD
         }
     }
 
+    fun isFacebookUrl(value: String): Boolean {
+        return try {
+            val host = Uri.parse(value).host?.lowercase().orEmpty()
+            host == "facebook.com" || host.endsWith(".facebook.com")
+        } catch (_: Throwable) { false }
+    }
+
+    fun openFacebook(url: String) {
+        val safeUrl = if (url.startsWith("http://", true) || url.startsWith("https://", true)) url else "https://www.facebook.com/"
+        try {
+            // Facebook no longer supports account login from Android embedded WebViews.
+            // Use Chrome Custom Tabs so Facebook can complete its secure login flow.
+            androidx.browser.customtabs.CustomTabsIntent.Builder()
+                .build()
+                .launchUrl(context, Uri.parse(safeUrl))
+        } catch (_: Throwable) {
+            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl))) } catch (_: Throwable) { }
+        }
+    }
+
     fun openAddress() {
         val target = targetFor(address)
         address = target
         onUrlChange(target)
-        webViewRef?.loadUrl(target)
+        if (isFacebookUrl(target)) {
+            openFacebook(target)
+        } else {
+            webViewRef?.loadUrl(target)
+        }
     }
 
     BackHandler {
@@ -72,19 +96,26 @@ private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onD
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val target = request.url.toString()
-                            if (target.startsWith("http://", true) || target.startsWith("https://", true)) return false
 
-                            // Facebook and some other sites use app-only deep links. Never let
-                            // an unsupported scheme reach WebView, otherwise it shows
-                            // ERR_UNKNOWN_URL_SCHEME. Fall back to the mobile web page.
+                            if (target.startsWith("http://", true) || target.startsWith("https://", true)) {
+                                // Facebook authentication must leave the embedded WebView.
+                                if (isFacebookUrl(target)) {
+                                    openFacebook(target)
+                                    return true
+                                }
+                                return false
+                            }
+
+                            // Facebook app/deep-link schemes such as sfilvavs:// and fb://
+                            // must never be passed to WebView, otherwise it displays
+                            // ERR_UNKNOWN_URL_SCHEME.
                             if (target.startsWith("sfilvavs://", true) ||
                                 target.startsWith("fb://", true) ||
                                 target.startsWith("fb-messenger://", true)) {
-                                view.loadUrl("https://m.facebook.com/")
+                                openFacebook("https://www.facebook.com/")
                                 return true
                             }
 
-                            // Handle Android intent:// links when the target app is installed.
                             if (target.startsWith("intent://", true)) {
                                 try {
                                     val intent = Intent.parseUri(target, Intent.URI_INTENT_SCHEME)
@@ -98,7 +129,6 @@ private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onD
                                 return true
                             }
 
-                            // tel:, mailto:, market: etc. can be handled by Android apps.
                             try {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, request.url))
                             } catch (_: Throwable) { }
@@ -107,7 +137,7 @@ private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onD
 
                         override fun onPageFinished(view: WebView, pageUrl: String) {
                             super.onPageFinished(view, pageUrl)
-                            if (pageUrl.startsWith("http://", true) || pageUrl.startsWith("https://", true)) {
+                            if ((pageUrl.startsWith("http://", true) || pageUrl.startsWith("https://", true)) && !isFacebookUrl(pageUrl)) {
                                 address = pageUrl
                                 onUrlChange(pageUrl)
                                 saveBrowserVisit(ctx, pageUrl, view.title)
@@ -116,7 +146,13 @@ private fun BrowserScreen(initialUrl: String, onUrlChange: (String) -> Unit, onD
                     }
                     setDownloadListener { u, _, _, _, _ -> if (!u.isNullOrBlank()) onDownload(u) }
                     webViewRef = this
-                    loadUrl(targetFor(initialUrl))
+                    val first = targetFor(initialUrl)
+                    if (isFacebookUrl(first)) {
+                        post { openFacebook(first) }
+                        loadUrl("https://www.google.com")
+                    } else {
+                        loadUrl(first)
+                    }
                 }
             },
             update = { webViewRef = it }
@@ -223,18 +259,15 @@ def find_function(text, name):
 
 text = KOTLIN.read_text(encoding="utf-8")
 
-# History cards must reopen the exact URL in the PDM Browser.
 text = text.replace(
     '"History" -> HistoryScreen(activity)',
     '"History" -> HistoryScreen(activity) { target -> browserUrl = target; screen = "Browser" }'
 )
 
-# Remove TikTok from Quick Access because it is not available in India.
 tiktok_old = 'BrandHomeTile("TikTok", R.drawable.ic_brand_tiktok, Color(0xFFEFF5FF), Modifier.weight(1f)) { openBrowser("https://www.tiktok.com") }'
 tiktok_new = 'HomeTile("Moj", Icons.Default.PlayCircle, Color(0xFFEFF5FF), Modifier.weight(1f)) { openBrowser("https://mojapp.in/") }'
 text = text.replace(tiktok_old, tiktok_new)
 
-# Replace the remaining generic Quick Access tile with useful working services.
 games_old = 'HomeTile("Games", Icons.Default.SportsEsports, Color(0xFFF1F3F5), Modifier.weight(1f)) { openBrowser("https://shanpalia.github.io/WebsitePaliaAPK_V.2/") }'
 games_new = 'HomeTile("Josh", Icons.Default.PlayCircle, Color(0xFFF1F3F5), Modifier.weight(1f)) { openBrowser("https://myjosh.in/") }'
 text = text.replace(games_old, games_new)
@@ -250,4 +283,4 @@ start, end = find_function(text, "HistoryScreen")
 text = text[:start] + NEW_HISTORY.strip() + text[end:]
 
 KOTLIN.write_text(text, encoding="utf-8")
-print("PDM source patched: Facebook deep-link fallback, Chrome-style WebView, clickable Recent history, and India-safe Quick Access")
+print("PDM source patched: Facebook Custom Tab login, safe deep-link handling, clickable Recent history, and India-safe Quick Access")
