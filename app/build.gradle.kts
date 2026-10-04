@@ -55,6 +55,11 @@ dependencies {
 
 tasks.register("patchPdmSource") {
     doLast {
+        // The source file was accidentally replaced by a bad fix commit. Restore the
+        // last known-good full source before applying the deterministic patch scripts.
+        exec {
+            commandLine("git", "checkout", "74a6a72d5e447d92dafb182d328adab553420bdd", "--", "app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt")
+        }
         exec {
             commandLine("python3", rootProject.file("scripts/fix_pdm.py").absolutePath)
         }
