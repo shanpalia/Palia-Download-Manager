@@ -61,6 +61,9 @@ tasks.register("patchPdmSource") {
         exec {
             commandLine("python3", rootProject.file("scripts/fix_history_browser.py").absolutePath)
         }
+        exec {
+            commandLine("python3", rootProject.file("scripts/final_compile_fix.py").absolutePath)
+        }
     }
 }
 
