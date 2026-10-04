@@ -1,0 +1,79 @@
+name: PDM Brand Quick Access
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Use real brand icons in PDM quick access and green arrow download button'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Patch quick access
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt')
+          s = p.read_text()
+
+          old = 'trailingIcon = { Button(onClick = onGo, shape = RoundedCornerShape(24.dp), contentPadding = PaddingValues(horizontal = 18.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Download") } },'
+          new = 'trailingIcon = { IconButton(onClick = onGo, modifier = Modifier.size(50.dp)) { Icon(Icons.Default.ArrowDownward, contentDescription = "Download", tint = Green, modifier = Modifier.size(30.dp)) } },'
+          s = s.replace(old, new, 1)
+
+          replacements = {
+            'HomeTile("YouTube", Icons.Default.PlayCircle, Color(0xFFFFEEF1), Modifier.weight(1f))': 'BrandHomeTile("YouTube", R.drawable.ic_brand_youtube, Color(0xFFFFEEF1), Modifier.weight(1f))',
+            'HomeTile("Google", Icons.Default.Search, Color(0xFFF0EAFF), Modifier.weight(1f))': 'BrandHomeTile("Google", R.drawable.ic_brand_google, Color(0xFFF0EAFF), Modifier.weight(1f))',
+            'HomeTile("Facebook", Icons.Default.Public, Color(0xFFE9FFF6), Modifier.weight(1f))': 'BrandHomeTile("Facebook", R.drawable.ic_brand_facebook, Color(0xFFE9FFF6), Modifier.weight(1f))',
+            'HomeTile("Instagram", Icons.Default.CameraAlt, Color(0xFFFFF4DF), Modifier.weight(1f))': 'BrandHomeTile("Instagram", R.drawable.ic_brand_instagram, Color(0xFFFFF4DF), Modifier.weight(1f))',
+            'HomeTile("TikTok", Icons.Default.VideoLibrary, Color(0xFFEFF5FF), Modifier.weight(1f))': 'BrandHomeTile("TikTok", R.drawable.ic_brand_tiktok, Color(0xFFEFF5FF), Modifier.weight(1f))',
+            'openBrowser("https://play.google.com")': 'openBrowser("https://shanpalia.github.io/WebsitePaliaAPK_V.2/")',
+            'openBrowser("https://play.google.com/store/games")': 'openBrowser("https://shanpalia.github.io/WebsitePaliaAPK_V.2/")',
+          }
+          for a,b in replacements.items():
+            s = s.replace(a,b,1)
+
+          marker = '@Composable private fun HomeTile(label: String, icon: ImageVector, bg: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {'
+          brand = '''@Composable private fun BrandHomeTile(label: String, resourceId: Int, bg: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+              Card(modifier = modifier.clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = bg)) {
+                  Column(Modifier.padding(vertical = 13.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                      AndroidView(factory = { context -> ImageView(context).apply { setImageResource(resourceId); scaleType = ImageView.ScaleType.CENTER_INSIDE } }, modifier = Modifier.size(40.dp))
+                      Spacer(Modifier.height(5.dp))
+                      Text(label, fontSize = 13.sp, color = Dark, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                  }
+              }
+          }
+
+          '''
+          if 'private fun BrandHomeTile' not in s:
+            if marker not in s:
+              raise SystemExit('HomeTile marker not found')
+            s = s.replace(marker, brand + marker, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Verify
+        run: |
+          grep -Fq 'R.drawable.ic_brand_youtube' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          grep -Fq 'R.drawable.ic_brand_google' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          grep -Fq 'R.drawable.ic_brand_facebook' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          grep -Fq 'R.drawable.ic_brand_instagram' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          grep -Fq 'R.drawable.ic_brand_tiktok' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          grep -Fq 'ArrowDownward' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          if git diff --cached --quiet; then
+            echo "No source changes needed"
+          else
+            git commit -m "Use real brand icons in PDM quick access and green arrow download button"
+            git push
+          fi
