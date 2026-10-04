@@ -5,33 +5,23 @@ ROOT = Path(__file__).resolve().parents[1]
 KOTLIN = ROOT / "app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt"
 text = KOTLIN.read_text(encoding="utf-8")
 
-# The source patchers can reintroduce the old Kotlin trailing-lambda form.
-# Normalize the entire Browser destination line deterministically.
+# The source patchers rebuild PdmMainActivity.kt during every Gradle build.
+# Do not try to match one exact previous spelling: normalize the complete
+# navigation lines regardless of indentation or earlier patch variants.
 text, browser_count = re.subn(
-    r'(?m)^\s*"Browser"\s*->\s*BrowserScreen\(browserUrl,\s*\{\s*browserUrl\s*=\s*it\s*\},\s*\{\s*dialogUrl\s*=\s*it\s*\}\)\s*\{\s*screen\s*=\s*"Home"\s*\}\s*$',
-    '                        "Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }, { screen = "Home" })',
+    r'(?m)^(\s*)"Browser"\s*->.*$',
+    r'\1"Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }, { screen = "Home" })',
     text,
 )
 
-# Also handle the exact legacy spelling if a patcher changes indentation.
-text = text.replace(
-    '"Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }) { screen = "Home" }',
-    '"Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }, { screen = "Home" })'
-)
-
-# History must use the explicit callback parameter; never leave a second
-# trailing lambda after HistoryScreen(activity).
-text = re.sub(
-    r'(?m)^\s*"History"\s*->\s*HistoryScreen\(activity\)\s*\{\s*target\s*->\s*browserUrl\s*=\s*target\s*;\s*screen\s*=\s*"Browser"\s*\}\s*$',
-    '                        "History" -> HistoryScreen(activity, onOpenUrl = { target -> browserUrl = target; screen = "Browser" })',
+text, history_count = re.subn(
+    r'(?m)^(\s*)"History"\s*->.*$',
+    r'\1"History" -> HistoryScreen(activity, onOpenUrl = { target -> browserUrl = target; screen = "Browser" })',
     text,
 )
-text = text.replace(
-    '"History" -> HistoryScreen(activity)',
-    '"History" -> HistoryScreen(activity, onOpenUrl = { target -> browserUrl = target; screen = "Browser" })'
-)
 
-# Rename PDM's two-argument download filter so it cannot collide with Material3 FilterChip.
+# Rename PDM's two-argument download filter so it cannot collide with Material3
+# FilterChip, whose signature has named callbacks and a label lambda.
 text = text.replace(
     '@Composable private fun FilterChip(selected: Boolean, text: String)',
     '@Composable private fun PdmFilterChip(selected: Boolean, text: String)'
@@ -42,11 +32,18 @@ text = text.replace('FilterChip(false, "Completed")', 'PdmFilterChip(false, "Com
 
 KOTLIN.write_text(text, encoding="utf-8")
 
-# Fail the patch step immediately if the compiler-breaking form survives.
+# Verify the exact Kotlin forms that must reach the compiler.
 final_text = KOTLIN.read_text(encoding="utf-8")
-if 'BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }) { screen = "Home" }' in final_text:
-    raise SystemExit("ERROR: legacy BrowserScreen trailing-lambda syntax survived patch")
-if re.search(r'(?m)^\s*"History"\s*->\s*HistoryScreen\(activity\)\s*\{', final_text):
-    raise SystemExit("ERROR: legacy HistoryScreen trailing-lambda syntax survived patch")
+expected_browser = '"Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }, { screen = "Home" })'
+expected_history = '"History" -> HistoryScreen(activity, onOpenUrl = { target -> browserUrl = target; screen = "Browser" })'
 
-print(f"PDM final Kotlin compile-call fix applied (Browser replacements: {browser_count})")
+if expected_browser not in final_text:
+    raise SystemExit("ERROR: deterministic BrowserScreen call was not produced")
+if expected_history not in final_text:
+    raise SystemExit("ERROR: deterministic HistoryScreen call was not produced")
+if re.search(r'(?m)^\s*"Browser"\s*->.*\}\s*\{', final_text):
+    raise SystemExit("ERROR: BrowserScreen still has a trailing lambda outside parentheses")
+if re.search(r'(?m)^\s*"History"\s*->.*\}\s*\{', final_text):
+    raise SystemExit("ERROR: HistoryScreen still has a trailing lambda outside parentheses")
+
+print(f"PDM final Kotlin compile-call fix applied (Browser lines: {browser_count}, History lines: {history_count})")
