@@ -6,7 +6,7 @@ on:
 
 jobs:
   fix:
-    if: github.event.head_commit.message != 'Fix Compose clickable and Button arguments'
+    if: github.event.head_commit.message != 'Fix remaining Compose syntax'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -20,11 +20,24 @@ jobs:
           from pathlib import Path
           p = Path('app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt')
           s = p.read_text()
-          s = s.replace('Modifier.clickable(onClick)', 'Modifier.clickable(onClick = onClick)')
-          s = s.replace('Modifier.clickable(onClick) else Modifier', 'Modifier.clickable(onClick = onClick) else Modifier')
-          s = s.replace('Button(enabled = !checking, onClick = { scope.launch { checking = true; status = "Checking website…"; val r = checkPdmUpdate(); if (r == null) { status = "Could not check for updates"; version = ""; updateUrl = "" } else if (r.available) { status = "Update available • v${r.version}"; version = r.version; updateUrl = r.url ?: "" } else { status = "Up to date • v${BuildConfig.VERSION_NAME}"; version = r.version; updateUrl = "" }; checking = false } }, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(25.dp))', 'Button(enabled = !checking, onClick = { scope.launch { checking = true; status = "Checking website…"; val r = checkPdmUpdate(); if (r == null) { status = "Could not check for updates"; version = ""; updateUrl = "" } else if (r.available) { status = "Update available • v${r.version}"; version = r.version; updateUrl = r.url ?: "" } else { status = "Up to date • v${BuildConfig.VERSION_NAME}"; version = r.version; updateUrl = "" }; checking = false } }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(25.dp))')
+
+          replacements = {
+              'modifier.clickable(onClick)': 'modifier.clickable(onClick = onClick)',
+              'Modifier.fillMaxWidth().padding(horizontal = 18.dp).clickable(onClick)': 'Modifier.fillMaxWidth().padding(horizontal = 18.dp).clickable(onClick = onClick)',
+              'Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) }, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(25.dp), colors = ButtonDefaults.buttonColors(containerColor = Blue))': 'Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(25.dp), colors = ButtonDefaults.buttonColors(containerColor = Blue))',
+          }
+
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+
           p.write_text(s)
           PY
+
+      - name: Verify no known bad patterns remain
+        run: |
+          ! grep -Fq 'modifier.clickable(onClick)' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          ! grep -Fq 'Modifier.fillMaxWidth().padding(horizontal = 18.dp).clickable(onClick)' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
+          ! grep -Fq 'Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) }, Modifier.' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
 
       - name: Commit fixes
         run: |
@@ -34,6 +47,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes needed"
           else
-            git commit -m "Fix Compose clickable and Button arguments"
+            git commit -m "Fix remaining Compose syntax"
             git push
           fi
