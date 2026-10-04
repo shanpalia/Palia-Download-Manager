@@ -289,7 +289,7 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
         shape = RoundedCornerShape(30.dp),
         placeholder = { Text(placeholder) },
         leadingIcon = { Icon(Icons.Default.Link, null, tint = Green) },
-        trailingIcon = { Button(onClick = onGo, shape = RoundedCornerShape(24.dp), contentPadding = PaddingValues(horizontal = 18.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Download") } },
+        trailingIcon = { IconButton(onClick = onGo, modifier = Modifier.size(50.dp)) { Icon(Icons.Default.ArrowDownward, contentDescription = "Download", tint = Green, modifier = Modifier.size(30.dp)) } },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
         keyboardActions = KeyboardActions(onGo = { onGo() })
     )
@@ -301,15 +301,15 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
         item { PdmHeader("PDM", "Palia Download Manager", onMenu = openMenu) }
         item { Text("Quick access", Modifier.padding(horizontal = 20.dp), fontSize = 19.sp, color = Dark, fontWeight = FontWeight.Bold) }
         item { Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeTile("YouTube", Icons.Default.PlayCircle, Color(0xFFFFEEF1), Modifier.weight(1f)) { openBrowser("https://www.youtube.com") }
-            HomeTile("Google", Icons.Default.Search, Color(0xFFF0EAFF), Modifier.weight(1f)) { openBrowser("https://www.google.com") }
-            HomeTile("Facebook", Icons.Default.Public, Color(0xFFE9FFF6), Modifier.weight(1f)) { openBrowser("https://www.facebook.com") }
-            HomeTile("Instagram", Icons.Default.CameraAlt, Color(0xFFFFF4DF), Modifier.weight(1f)) { openBrowser("https://www.instagram.com") }
+            BrandHomeTile("YouTube", R.drawable.ic_brand_youtube, Color(0xFFFFEEF1), Modifier.weight(1f)) { openBrowser("https://www.youtube.com") }
+            BrandHomeTile("Google", R.drawable.ic_brand_google, Color(0xFFF0EAFF), Modifier.weight(1f)) { openBrowser("https://www.google.com") }
+            BrandHomeTile("Facebook", R.drawable.ic_brand_facebook, Color(0xFFE9FFF6), Modifier.weight(1f)) { openBrowser("https://www.facebook.com") }
+            BrandHomeTile("Instagram", R.drawable.ic_brand_instagram, Color(0xFFFFF4DF), Modifier.weight(1f)) { openBrowser("https://www.instagram.com") }
         } }
         item { Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeTile("TikTok", Icons.Default.VideoLibrary, Color(0xFFEFF5FF), Modifier.weight(1f)) { openBrowser("https://www.tiktok.com") }
-            HomeTile("Apps", Icons.Default.Android, Color(0xFFEAF8FF), Modifier.weight(1f)) { openBrowser("https://play.google.com") }
-            HomeTile("Games", Icons.Default.SportsEsports, Color(0xFFF1F3F5), Modifier.weight(1f)) { openBrowser("https://play.google.com/store/games") }
+            BrandHomeTile("TikTok", R.drawable.ic_brand_tiktok, Color(0xFFEFF5FF), Modifier.weight(1f)) { openBrowser("https://www.tiktok.com") }
+            HomeTile("Apps", Icons.Default.Android, Color(0xFFEAF8FF), Modifier.weight(1f)) { openBrowser("https://shanpalia.github.io/WebsitePaliaAPK_V.2/") }
+            HomeTile("Games", Icons.Default.SportsEsports, Color(0xFFF1F3F5), Modifier.weight(1f)) { openBrowser("https://shanpalia.github.io/WebsitePaliaAPK_V.2/") }
             HomeTile("Torrent", Icons.Default.CloudDownload, Color(0xFFF6F6F6), Modifier.weight(1f)) { torrent() }
         } }
         item { Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
@@ -322,6 +322,16 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
         item { Text("Recent downloads", Modifier.padding(horizontal = 20.dp), fontSize = 19.sp, color = Dark, fontWeight = FontWeight.Bold) }
         item { RecentCard("Open Downloads", Icons.Default.Download, downloads) }
         item { RecentCard("Download History", Icons.Default.History, history) }
+    }
+}
+
+@Composable private fun BrandHomeTile(label: String, resourceId: Int, bg: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(modifier = modifier.clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = bg)) {
+        Column(Modifier.padding(vertical = 13.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            AndroidView(factory = { context -> ImageView(context).apply { setImageResource(resourceId); scaleType = ImageView.ScaleType.CENTER_INSIDE } }, modifier = Modifier.size(40.dp))
+            Spacer(Modifier.height(5.dp))
+            Text(label, fontSize = 13.sp, color = Dark, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
