@@ -6,15 +6,19 @@ on:
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '[recent-history-patched]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Skip generated patch commit
+        if: ${{ contains(github.event.head_commit.message, '[recent-history-patched]') }}
+        run: echo "Patch already applied; nothing to do."
       - name: Patch PDM recent history
-        shell: python
+        if: ${{ !contains(github.event.head_commit.message, '[recent-history-patched]') }}
+        shell: bash
         run: |
+          python3 - <<'PY'
           from pathlib import Path
           p = Path('app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt')
           s = p.read_text()
@@ -142,9 +146,12 @@ private fun clearSiteVisits(context: Context) {
           s = s[:start] + history + s[end:]
           s = s.replace('RecentCard("Download History", Icons.Default.History, history)', 'RecentCard("Recent", Icons.Default.History, history)')
           p.write_text(s)
+          PY
       - name: Verify Kotlin source
+        if: ${{ !contains(github.event.head_commit.message, '[recent-history-patched]') }}
         run: grep -nE 'SiteVisit|Sites visited in PDM Browser|Tab\(|saveSiteVisit|PdmHeader\("History"' app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt
       - name: Commit patch
+        if: ${{ !contains(github.event.head_commit.message, '[recent-history-patched]') }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
