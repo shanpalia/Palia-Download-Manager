@@ -55,11 +55,11 @@ dependencies {
 
 tasks.register("patchPdmSource") {
     doLast {
-        // Restore a known-good full PDM source before applying the deterministic patch scripts.
-        // Do not use git checkout here: Actions was failing to resolve the path during the task.
+        // This is a task in the :app project. project.file(...) is therefore rooted at /app.
+        // Use src/main/... here, not app/src/main/..., which incorrectly created /app/app/src/....
         exec {
             commandLine("git", "show", "eae5250c3e815389560ae0036ba71e2f3b8a627b:app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt")
-            standardOutput = project.file("app/src/main/java/com/shanpalia/pdm/PdmMainActivity.kt").outputStream()
+            standardOutput = project.file("src/main/java/com/shanpalia/pdm/PdmMainActivity.kt").outputStream()
         }
         exec {
             commandLine("python3", rootProject.file("scripts/fix_pdm.py").absolutePath)
