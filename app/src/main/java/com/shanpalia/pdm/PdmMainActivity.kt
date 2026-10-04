@@ -14,7 +14,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ImageView
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -50,11 +50,12 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 private val Green = Color(0xFF16B978)
+private val GreenDark = Color(0xFF07965E)
 private val Blue = Color(0xFF1769D5)
 private val Dark = Color(0xFF12231E)
 private val Muted = Color(0xFF6F7D77)
 private val Mint = Color(0xFFE9FFF6)
-private val BrandPurple = Color(0xFFE8D9FF)
+private val Soft = Color(0xFFF4FFFB)
 private const val UPDATE_URL = "https://shanpalia.github.io/WebsitePaliaAPK_V.2/pdm-update.json"
 
 private data class UpdateInfo(val available: Boolean, val version: String, val url: String?)
@@ -66,18 +67,25 @@ private suspend fun checkPdmUpdate(): UpdateInfo? = withContext(Dispatchers.IO) 
         c.readTimeout = 8000
         val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
         c.disconnect()
-        UpdateInfo(json.optLong("versionCode", 0L) > BuildConfig.VERSION_CODE.toLong(), json.optString("version", ""), json.optString("downloadUrl", "").ifBlank { null })
+        UpdateInfo(
+            json.optLong("versionCode", 0L) > BuildConfig.VERSION_CODE.toLong(),
+            json.optString("version", ""),
+            json.optString("downloadUrl", "").ifBlank { null }
+        )
     } catch (_: Throwable) { null }
 }
 
 class PdmMainActivity : ComponentActivity() {
     private var pending: String? = null
     private var waitingStorage = false
+
     private val torrentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@registerForActivityResult
         try {
             val file = File(cacheDir, "selected-${System.currentTimeMillis()}.torrent")
-            contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
+            contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+            }
             launchDownload(DownloadService.ACTION_TORRENT_FILE, null, file.absolutePath)
         } catch (_: Throwable) { }
     }
@@ -103,7 +111,12 @@ class PdmMainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestStorage(url: String) { pending = url; waitingStorage = true; openStorage() }
+    private fun requestStorage(url: String) {
+        pending = url
+        waitingStorage = true
+        openStorage()
+    }
+
     private fun downloadUrl(value: String) {
         val url = value.trim()
         if (url.isBlank()) return
@@ -112,6 +125,7 @@ class PdmMainActivity : ComponentActivity() {
             url.startsWith("http://", true) || url.startsWith("https://", true) -> launchDownload(DownloadService.ACTION_HTTP, url, null)
         }
     }
+
     private fun launchDownload(action: String, url: String?, path: String?) {
         val intent = Intent(this, DownloadService::class.java).apply {
             this.action = action
@@ -120,16 +134,26 @@ class PdmMainActivity : ComponentActivity() {
         }
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
     }
+
     private fun openStorage() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try { startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))) }
-            catch (_: Throwable) { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+            } catch (_: Throwable) {
+                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
         }
     }
 }
 
 @Composable
-private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, onStorage: () -> Unit, onRequestStorage: (String) -> Unit, onTorrent: () -> Unit) {
+private fun PdmApp(
+    activity: ComponentActivity,
+    onDownload: (String) -> Unit,
+    onStorage: () -> Unit,
+    onRequestStorage: (String) -> Unit,
+    onTorrent: () -> Unit
+) {
     var screen by rememberSaveable { mutableStateOf("Home") }
     var url by rememberSaveable { mutableStateOf("") }
     var browserUrl by rememberSaveable { mutableStateOf("https://www.google.com") }
@@ -138,7 +162,11 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
     var ready by rememberSaveable { mutableStateOf(false) }
     var dialogUrl by remember { mutableStateOf<String?>(null) }
     var exit by remember { mutableStateOf(false) }
-    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permission = if (Build.VERSION.SDK_INT >= 30 && !PdmStorage.hasPublicAccess()) 2 else 0; ready = permission == 0 }
+
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        permission = if (Build.VERSION.SDK_INT >= 30 && !PdmStorage.hasPublicAccess()) 2 else 0
+        ready = permission == 0
+    }
 
     LaunchedEffect(Unit) {
         delay(900)
@@ -149,47 +177,63 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
             else -> ready = true
         }
     }
+
     LaunchedEffect(permission) {
-        if (permission == 2) { while (!PdmStorage.hasPublicAccess()) delay(400); permission = 0; ready = true }
+        if (permission == 2) {
+            while (!PdmStorage.hasPublicAccess()) delay(400)
+            permission = 0
+            ready = true
+        }
     }
 
     BackHandler(enabled = !splash) {
-        if (dialogUrl != null) { dialogUrl = null; return@BackHandler }
-        if (screen == "Browser") return@BackHandler
-        if (screen != "Home") screen = "Home" else exit = true
+        if (dialogUrl != null) {
+            dialogUrl = null
+        } else if (screen == "Browser") {
+            screen = "Home"
+        } else if (screen != "Home") {
+            screen = "Home"
+        } else {
+            exit = true
+        }
     }
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Green, background = Color.White, surface = Color.White)) {
-        if (splash) {
-            Splash()
-        } else if (!ready) {
-            PermissionScreen(
+        when {
+            splash -> Splash()
+            !ready -> PermissionScreen(
                 step = permission,
                 notification = { if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else permission = 2 },
                 storage = onStorage,
                 skip = { permission = 0; ready = true }
             )
-        } else {
-            Scaffold(
-                containerColor = Color.White,
-                bottomBar = {
-                    NavigationBar(containerColor = Color(0xFFF4FFFB), tonalElevation = 0.dp) {
-                        PdmNavigationBarItem(selected = screen == "Home", onClick = { screen = "Home" }, icon = { Icon(Icons.Default.Home, null) })
-                        PdmNavigationBarItem(selected = screen == "Downloads", onClick = { screen = "Downloads" }, icon = { Icon(Icons.Default.Download, null) })
-                        PdmNavigationBarItem(selected = screen == "Browser", onClick = { screen = "Browser" }, icon = { Icon(Icons.Default.Language, null) })
-                        PdmNavigationBarItem(selected = screen == "Settings", onClick = { screen = "Settings" }, icon = { Icon(Icons.Default.Settings, null) })
+            else -> {
+                Scaffold(
+                    containerColor = Color.White,
+                    bottomBar = {
+                        PdmBottomBar(screen) { screen = it }
                     }
-                }
-            ) { padding ->
-                Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-                    if (screen == "Home") {
-                        HomeScreen(url, { url = it }, { browserUrl = if (url.startsWith("http://", true) || url.startsWith("https://", true)) url else "https://www.google.com/search?q=${Uri.encode(url)}"; screen = "Browser" }, { dialogUrl = url }, { screen = "Browser" }, { screen = "Downloads" }, onTorrent)
-                    } else if (screen == "Downloads") {
-                        DownloadsScreen(activity)
-                    } else if (screen == "Browser") {
-                        BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }) { screen = "Home" }
-                    } else {
-                        SettingsScreen(onStorage)
+                ) { padding ->
+                    Box(Modifier.fillMaxSize().padding(padding)) {
+                        when (screen) {
+                            "Home" -> HomeScreen(
+                                url = url,
+                                setUrl = { url = it },
+                                go = {
+                                    browserUrl = if (url.startsWith("http://", true) || url.startsWith("https://", true)) url else "https://www.google.com/search?q=${Uri.encode(url)}"
+                                    screen = "Browser"
+                                },
+                                start = { dialogUrl = url },
+                                browser = { screen = "Browser" },
+                                downloads = { screen = "Downloads" },
+                                history = { screen = "History" },
+                                torrent = onTorrent
+                            )
+                            "Downloads" -> DownloadsScreen(activity)
+                            "Browser" -> BrowserScreen(browserUrl, { browserUrl = it }, { dialogUrl = it }) { screen = "Home" }
+                            "History" -> HistoryScreen(activity)
+                            "Settings" -> SettingsScreen(onStorage)
+                        }
                     }
                 }
             }
@@ -211,6 +255,7 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
                 dismissButton = { TextButton(onClick = { dialogUrl = null }) { Text("CANCEL") } }
             )
         }
+
         if (exit) {
             AlertDialog(
                 onDismissRequest = { exit = false },
@@ -223,39 +268,282 @@ private fun PdmApp(activity: ComponentActivity, onDownload: (String) -> Unit, on
     }
 }
 
-@Composable private fun HomeScreen(url: String, setUrl: (String) -> Unit, go: () -> Unit, start: () -> Unit, browser: () -> Unit, downloads: () -> Unit, torrent: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().background(Color.White)) {
-        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Menu, null, Modifier.size(30.dp), tint = Dark)
-            OutlinedTextField(value = url, onValueChange = setUrl, modifier = Modifier.weight(1f).height(58.dp).padding(start = 8.dp), singleLine = true, shape = RoundedCornerShape(18.dp), placeholder = { Text("Paste URL or search") }, leadingIcon = { Icon(Icons.Default.Language, null) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { go() }), trailingIcon = { IconButton(onClick = go) { Icon(Icons.Default.ArrowForward, null, tint = Blue) } })
-        }
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Download, null, Modifier.size(44.dp), tint = Green); Spacer(Modifier.width(12.dp)); Column { Text("Palia Download Manager", fontSize = 20.sp, color = Dark); Text("Fast • Smart • Secure", color = Muted) } }
-        Card(modifier = Modifier.fillMaxWidth().padding(18.dp), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Mint)) { Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text("Ready to download?", fontSize = 26.sp, color = Dark); Text("Paste a direct HTTP/HTTPS file link, .torrent or magnet link.", color = Muted, fontSize = 16.sp); Button(onClick = start, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(28.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Start Download") }; OutlinedButton(onClick = torrent, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(28.dp)) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Open .torrent file") }; OutlinedButton(onClick = downloads, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(28.dp)) { Icon(Icons.Default.List, null); Spacer(Modifier.width(8.dp)); Text("View Downloads") } } }
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) { OutlinedButton(onClick = browser, modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(26.dp)) { Icon(Icons.Default.Web, null); Spacer(Modifier.width(6.dp)); Text("Browser") }; OutlinedButton(onClick = downloads, modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(26.dp)) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(6.dp)); Text("Downloads") } }
+@Composable
+private fun PdmBottomBar(screen: String, onScreen: (String) -> Unit) {
+    NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+        BottomItem(screen == "Home", "Home", Icons.Default.Home) { onScreen("Home") }
+        BottomItem(screen == "Browser", "Browser", Icons.Default.Language) { onScreen("Browser") }
+        BottomItem(screen == "Downloads", "Downloads", Icons.Default.Download) { onScreen("Downloads") }
+        BottomItem(screen == "History", "History", Icons.Default.History) { onScreen("History") }
+        BottomItem(screen == "Settings", "Settings", Icons.Default.Settings) { onScreen("Settings") }
     }
 }
 
-@Composable private fun BrowserScreen(initial: String, onUrl: (String) -> Unit, onDownload: (String) -> Unit, onExit: () -> Unit) {
+@Composable
+private fun RowScope.BottomItem(selected: Boolean, label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = { Icon(icon, contentDescription = label) },
+        label = { Text(label, fontSize = 11.sp) },
+        colors = NavigationBarItemDefaults.colors(selectedIconColor = Green, selectedTextColor = Green, indicatorColor = Mint, unselectedIconColor = Color(0xFF87948F), unselectedTextColor = Muted)
+    )
+}
+
+@Composable
+private fun PdmHeader(title: String, subtitle: String? = null, onMenu: (() -> Unit)? = null) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (onMenu != null) {
+            IconButton(onClick = onMenu) { Icon(Icons.Default.Menu, "Menu", tint = Dark) }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 25.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            if (subtitle != null) Text(subtitle, fontSize = 12.sp, color = Muted)
+        }
+        Icon(Icons.Default.Download, null, Modifier.size(30.dp), tint = Green)
+    }
+}
+
+@Composable
+private fun HomeScreen(
+    url: String,
+    setUrl: (String) -> Unit,
+    go: () -> Unit,
+    start: () -> Unit,
+    browser: () -> Unit,
+    downloads: () -> Unit,
+    history: () -> Unit,
+    torrent: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(Color.White),
+        contentPadding = PaddingValues(bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            PdmHeader("PDM", "Palia Download Manager", onMenu = {})
+        }
+        item {
+            OutlinedTextField(
+                value = url,
+                onValueChange = setUrl,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(58.dp),
+                singleLine = true,
+                shape = RoundedCornerShape(30.dp),
+                placeholder = { Text("Paste URL here...") },
+                leadingIcon = { Icon(Icons.Default.Link, null, tint = Green) },
+                trailingIcon = { Button(onClick = go, shape = RoundedCornerShape(24.dp), contentPadding = PaddingValues(horizontal = 18.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) { Text("Download") } },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { go() })
+            )
+        }
+        item {
+            Text("Quick access", Modifier.padding(horizontal = 20.dp), fontSize = 19.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HomeTile("Video", Icons.Default.PlayCircle, Color(0xFFFFEEF1), Modifier.weight(1f)) { browser() }
+                HomeTile("Audio", Icons.Default.MusicNote, Color(0xFFF0EAFF), Modifier.weight(1f)) { browser() }
+                HomeTile("Apps", Icons.Default.Android, Color(0xFFE9FFF6), Modifier.weight(1f)) { browser() }
+                HomeTile("Games", Icons.Default.SportsEsports, Color(0xFFFFF4DF), Modifier.weight(1f)) { browser() }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HomeTile("Torrent", Icons.Default.CloudDownload, Color(0xFFEFF5FF), Modifier.weight(1f)) { torrent() }
+                HomeTile("Files", Icons.Default.Folder, Color(0xFFEAF8FF), Modifier.weight(1f)) { downloads() }
+                HomeTile("History", Icons.Default.History, Color(0xFFF1F3F5), Modifier.weight(1f)) { history() }
+                HomeTile("More", Icons.Default.GridView, Color(0xFFF6F6F6), Modifier.weight(1f)) { downloads() }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), shape = RoundedCornerShape(26.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Ready to download", fontSize = 24.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("Direct links, magnet links and .torrent files", color = Muted)
+                    Button(onClick = start, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(26.dp), colors = ButtonDefaults.buttonColors(containerColor = Green)) {
+                        Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Start Download")
+                    }
+                }
+            }
+        }
+        item {
+            Text("Recent downloads", Modifier.padding(horizontal = 20.dp), fontSize = 19.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+        item { RecentCard("Open Downloads", Icons.Default.Download, downloads) }
+        item { RecentCard("Download History", Icons.Default.History, history) }
+    }
+}
+
+@Composable
+private fun HomeTile(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, bg: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(modifier.clickable(onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = bg)) {
+        Column(Modifier.padding(vertical = 13.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, Modifier.size(28.dp), tint = GreenDark)
+            Spacer(Modifier.height(6.dp))
+            Text(label, fontSize = 12.sp, color = Dark)
+        }
+    }
+}
+
+@Composable
+private fun RecentCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).clickable(onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
+        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(38.dp), tint = Green)
+            Spacer(Modifier.width(12.dp))
+            Text(title, Modifier.weight(1f), color = Dark, fontSize = 16.sp)
+            Icon(Icons.Default.ChevronRight, null, tint = Muted)
+        }
+    }
+}
+
+@Composable
+private fun BrowserScreen(initial: String, onUrl: (String) -> Unit, onDownload: (String) -> Unit, onExit: () -> Unit) {
     var field by remember(initial) { mutableStateOf(initial) }
     var web by remember { mutableStateOf<WebView?>(null) }
     BackHandler { if (web?.canGoBack() == true) web?.goBack() else onExit() }
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Menu, null, Modifier.size(30.dp), tint = Dark)
-            OutlinedTextField(value = field, onValueChange = { field = it; onUrl(it) }, modifier = Modifier.weight(1f).height(58.dp).padding(start = 8.dp), singleLine = true, shape = RoundedCornerShape(18.dp), placeholder = { Text("Search or enter address") }, leadingIcon = { Icon(Icons.Default.Web, "Browser") }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go), keyboardActions = KeyboardActions(onGo = { loadBrowser(field, web) }), trailingIcon = { IconButton(onClick = { loadBrowser(field, web) }) { Icon(Icons.Default.ArrowForward, null, tint = Blue) } })
-        }
-        AndroidView(factory = { ctx -> WebView(ctx).apply { settings.javaScriptEnabled = true; settings.domStorageEnabled = true; settings.loadsImagesAutomatically = true; isVerticalScrollBarEnabled = false; isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER; webViewClient = object : WebViewClient() { override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = false; override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl) } }; setDownloadListener { u, _, _, _, _ -> if (!u.isNullOrBlank()) onDownload(u) }; loadUrl(initial); web = this } }, modifier = Modifier.fillMaxSize())
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        PdmHeader("Browser", "Browse and download", onMenu = onExit)
+        OutlinedTextField(
+            value = field,
+            onValueChange = { field = it; onUrl(it) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).height(56.dp),
+            singleLine = true,
+            shape = RoundedCornerShape(28.dp),
+            placeholder = { Text("Search or type URL") },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = Green) },
+            trailingIcon = { IconButton(onClick = { loadBrowser(field, web) }) { Icon(Icons.Default.ArrowForward, null, tint = Green) } },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { loadBrowser(field, web) })
+        )
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.loadsImagesAutomatically = true
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
+                    overScrollMode = View.OVER_SCROLL_NEVER
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = false
+                        override fun onPageFinished(view: WebView, pageUrl: String) { field = pageUrl; onUrl(pageUrl) }
+                    }
+                    setDownloadListener { u, _, _, _, _ -> if (!u.isNullOrBlank()) onDownload(u) }
+                    loadUrl(initial)
+                    web = this
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
-private fun loadBrowser(value: String, web: WebView?) { val v = value.trim(); if (v.isBlank()) return; web?.loadUrl(if (v.startsWith("http://", true) || v.startsWith("https://", true)) v else "https://www.google.com/search?q=${Uri.encode(v)}") }
+private fun loadBrowser(value: String, web: WebView?) {
+    val v = value.trim()
+    if (v.isBlank()) return
+    web?.loadUrl(if (v.startsWith("http://", true) || v.startsWith("https://", true)) v else "https://www.google.com/search?q=${Uri.encode(v)}")
+}
 
-@Composable private fun DownloadsScreen(context: Context) {
+@Composable
+private fun DownloadsScreen(context: Context) {
     var files by remember { mutableStateOf<List<File>>(emptyList()) }
     LaunchedEffect(Unit) { while (true) { files = PdmStorage.allFiles(context); delay(700) } }
-    Column(modifier = Modifier.fillMaxSize()) { Text("Downloads", fontSize = 24.sp, color = Dark, modifier = Modifier.padding(20.dp)); LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { items(files, key = { it.absolutePath }) { file -> Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF4FFFB))) { Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.InsertDriveFile, null, Modifier.size(42.dp), tint = Blue); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${file.length()} bytes", color = Muted) }; IconButton(onClick = { file.delete() }) { Icon(Icons.Default.Delete, null) } } } }; if (files.isEmpty()) item { Text("No downloads yet", color = Muted, modifier = Modifier.padding(20.dp)) } } } }
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        PdmHeader("Downloads", "Manage your downloaded files")
+        Row(Modifier.padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(true, "All ${files.size}")
+            FilterChip(false, "Downloading")
+            FilterChip(false, "Completed")
+        }
+        LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(files, key = { it.absolutePath }) { file -> DownloadFileCard(file) }
+            if (files.isEmpty()) item { EmptyState("No downloads yet", "Start a download from the Home or Browser screen.") }
+        }
+    }
+}
 
-@Composable private fun SettingsScreen(onStorage: () -> Unit) {
+@Composable
+private fun FilterChip(selected: Boolean, text: String) {
+    Surface(shape = RoundedCornerShape(22.dp), color = if (selected) Green else Soft) { Text(text, Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = if (selected) Color.White else Dark, fontSize = 12.sp) }
+}
+
+@Composable
+private fun DownloadFileCard(file: File) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(1.dp)) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            FileIcon(file.name)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Dark, fontSize = 15.sp)
+                Text("${file.length()} bytes • Completed", color = Muted, fontSize = 12.sp)
+            }
+            Icon(Icons.Default.CheckCircle, null, tint = Green)
+        }
+    }
+}
+
+@Composable
+private fun HistoryScreen(context: Context) {
+    var files by remember { mutableStateOf<List<File>>(emptyList()) }
+    LaunchedEffect(Unit) { while (true) { files = PdmStorage.allFiles(context); delay(1000) } }
+    Column(Modifier.fillMaxSize().background(Color.White)) {
+        PdmHeader("Download History", "Your downloaded files")
+        if (files.isEmpty()) {
+            EmptyState("No history yet", "Completed downloads will appear here.")
+        } else {
+            LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(files, key = { "history-${it.absolutePath}" }) { file ->
+                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            FileIcon(file.name)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Dark)
+                                Text("Completed • ${file.length()} bytes", color = Muted, fontSize = 12.sp)
+                            }
+                            Icon(Icons.Default.MoreVert, null, tint = Muted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileIcon(name: String) {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val icon = when (ext) {
+        "mp3", "wav", "m4a" -> Icons.Default.MusicNote
+        "mp4", "mkv", "webm", "avi" -> Icons.Default.PlayCircle
+        "apk" -> Icons.Default.Android
+        "zip", "rar", "7z" -> Icons.Default.FolderZip
+        "torrent" -> Icons.Default.CloudDownload
+        "jpg", "jpeg", "png", "webp" -> Icons.Default.Image
+        "pdf" -> Icons.Default.PictureAsPdf
+        else -> Icons.Default.InsertDriveFile
+    }
+    Surface(Modifier.size(48.dp), shape = RoundedCornerShape(13.dp), color = Mint) { Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = GreenDark) } }
+}
+
+@Composable
+private fun EmptyState(title: String, text: String) {
+    Column(Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(Modifier.size(82.dp), shape = RoundedCornerShape(28.dp), color = Mint) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Download, null, Modifier.size(40.dp), tint = Green) } }
+        Spacer(Modifier.height(16.dp))
+        Text(title, fontSize = 21.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Text(text, color = Muted, fontSize = 14.sp)
+    }
+}
+
+@Composable
+private fun SettingsScreen(onStorage: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var checking by rememberSaveable { mutableStateOf(false) }
@@ -263,127 +551,118 @@ private fun loadBrowser(value: String, web: WebView?) { val v = value.trim(); if
     var version by rememberSaveable { mutableStateOf("") }
     var updateUrl by rememberSaveable { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier.fillMaxSize().background(Color.White).padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Spacer(Modifier.height(14.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Mint)
-        ) {
-            Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                AndroidView(factory = { ImageView(it).apply { setImageResource(R.mipmap.ic_pdm_logo) } }, modifier = Modifier.size(62.dp))
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Text("PDM", fontSize = 27.sp, color = Dark)
-                    Text("PaliaAPK HUB", fontSize = 17.sp, color = Green)
-                    Text("Download Manager", fontSize = 13.sp, color = Muted)
+    LazyColumn(Modifier.fillMaxSize().background(Color.White), contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { PdmHeader("Settings", "PDM preferences") }
+        item {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Mint)) {
+                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AndroidView(factory = { ImageView(it).apply { setImageResource(R.mipmap.ic_pdm_logo) } }, Modifier.size(68.dp))
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Text("PDM", fontSize = 26.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("PaliaAPK HUB", fontSize = 16.sp, color = Green)
+                        Text("Download Manager", fontSize = 13.sp, color = Muted)
+                    }
                 }
             }
         }
-
-        Text("Settings", fontSize = 30.sp, color = Dark)
-
-        Button(
-            onClick = onStorage,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(27.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Green)
-        ) {
-            Icon(Icons.Default.Folder, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Storage access", fontSize = 16.sp)
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Mint),
-            shape = RoundedCornerShape(24.dp)
-        ) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SystemUpdate, null, tint = Green, modifier = Modifier.size(30.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("App updates", fontSize = 20.sp, color = Dark)
-                        Text("Official Palia website", fontSize = 13.sp, color = Muted)
+        item { SettingSection("Download Options") {
+            SettingRow(Icons.Default.Folder, "Storage access", "Choose where PDM can save files") { onStorage() }
+            SettingRow(Icons.Default.Download, "Auto resume", "Resume supported interrupted downloads", null)
+            SettingRow(Icons.Default.Speed, "Download speed", "Unlimited", null)
+        } }
+        item { SettingSection("Browser & Clipboard") {
+            SettingRow(Icons.Default.Language, "Built-in Browser", "Open links inside PDM", null)
+            SettingRow(Icons.Default.Link, "Auto detect copied link", "Show download action for copied links", null)
+        } }
+        item { SettingSection("Notifications") {
+            SettingRow(Icons.Default.Notifications, "Download complete", "Notify when a download finishes", null)
+        } }
+        item {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Soft)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.SystemUpdate, null, tint = Green, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("App updates", fontSize = 20.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
-                }
-                Text(
-                    when {
-                        status == "Not checked" -> "Check your Palia website for the latest PDM release."
-                        status.startsWith("Update available") -> status
-                        else -> status
-                    },
-                    color = if (status.startsWith("Update available")) Blue else Muted,
-                    fontSize = 15.sp
-                )
-                if (version.isNotBlank()) {
-                    Text("Website version: $version", color = Dark, fontSize = 14.sp)
-                }
-                Button(
-                    enabled = !checking,
-                    onClick = {
+                    Text(if (status == "Not checked") "Check the official Palia website for the latest release." else status, color = Muted)
+                    if (version.isNotBlank()) Text("Website version: $version", color = Dark, fontSize = 13.sp)
+                    Button(enabled = !checking, onClick = {
                         scope.launch {
                             checking = true
                             status = "Checking website…"
                             val r = checkPdmUpdate()
-                            if (r == null) {
-                                status = "Could not check for updates"
-                                version = ""
-                                updateUrl = ""
-                            } else if (r.available) {
-                                status = "Update available • v${r.version}"
-                                version = r.version
-                                updateUrl = r.url ?: ""
-                            } else {
-                                status = "Up to date • v${BuildConfig.VERSION_NAME}"
-                                version = r.version
-                                updateUrl = ""
-                            }
+                            if (r == null) { status = "Could not check for updates"; version = ""; updateUrl = "" }
+                            else if (r.available) { status = "Update available • v${r.version}"; version = r.version; updateUrl = r.url ?: "" }
+                            else { status = "Up to date • v${BuildConfig.VERSION_NAME}"; version = r.version; updateUrl = "" }
                             checking = false
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(25.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (checking) "Checking…" else "Check for updates")
-                }
-                if (updateUrl.isNotBlank()) {
-                    Button(
-                        onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        shape = RoundedCornerShape(25.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Blue)
-                    ) {
-                        Icon(Icons.Default.Download, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Open update")
+                    }, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(25.dp)) {
+                        Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (checking) "Checking…" else "Check for updates")
                     }
+                    if (updateUrl.isNotBlank()) Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) }, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(25.dp), colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Open update") }
                 }
             }
         }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFA))
-        ) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("PDM", fontSize = 18.sp, color = Dark)
-                Text("By PaliaAPK HUB", color = Green, fontSize = 16.sp)
-                Text("Developer by shanpalia", color = Muted, fontSize = 14.sp)
-                Text("Version ${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 13.sp)
+        item {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFA))) {
+                Column(Modifier.padding(18.dp)) {
+                    Text("PDM", fontSize = 18.sp, color = Dark)
+                    Text("By PaliaAPK HUB", color = Green, fontSize = 16.sp)
+                    Text("Developer by shanpalia", color = Muted, fontSize = 14.sp)
+                    Text("Version ${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 13.sp)
+                }
             }
         }
-        Spacer(Modifier.height(4.dp))
     }
 }
 
-@Composable private fun Splash() { Box(modifier = Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) { AndroidView(factory = { ImageView(it).apply { setImageResource(R.mipmap.ic_pdm_logo) } }, modifier = Modifier.size(104.dp)); Text("PDM", fontSize = 28.sp, color = Dark); Text("By PaliaAPK HUB", color = Green); Text("Developer by shanpalia", color = Muted, fontSize = 13.sp); LinearProgressIndicator(modifier = Modifier.width(150.dp), color = Green) } } }
+@Composable
+private fun SettingSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Text(title, Modifier.padding(start = 4.dp, bottom = 5.dp), fontSize = 18.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = Soft)) { Column(content = content) }
+    }
+}
 
-@Composable private fun PermissionScreen(step: Int, notification: () -> Unit, storage: () -> Unit, skip: () -> Unit) { val n = step == 1; Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Card(modifier = Modifier.padding(24.dp), colors = CardDefaults.cardColors(containerColor = Mint)) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(if (n) Icons.Default.Notifications else Icons.Default.Folder, null, Modifier.size(56.dp), tint = Green); Text(if (n) "Allow notifications" else "Allow storage access"); Button(onClick = if (n) notification else storage) { Text("Continue") }; TextButton(onClick = skip) { Text("Skip") } } } } }
+@Composable
+private fun SettingRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: (() -> Unit)?) {
+    Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick) else Modifier).padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(Modifier.size(40.dp), shape = RoundedCornerShape(12.dp), color = Mint) { Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = GreenDark) } }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) { Text(title, color = Dark, fontSize = 15.sp); Text(subtitle, color = Muted, fontSize = 12.sp) }
+        if (onClick != null) Icon(Icons.Default.ChevronRight, null, tint = Muted)
+    }
+}
+
+@Composable
+private fun Splash() {
+    Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            AndroidView(factory = { ImageView(it).apply { setImageResource(R.mipmap.ic_pdm_logo) } }, Modifier.size(116.dp))
+            Text("PDM", fontSize = 30.sp, color = Dark, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            Text("Palia Download Manager", color = Green, fontSize = 17.sp)
+            Text("By PaliaAPK HUB", color = Muted)
+            Text("Developer by shanpalia", color = Muted, fontSize = 13.sp)
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(Modifier.width(160.dp), color = Green)
+        }
+    }
+}
+
+@Composable
+private fun PermissionScreen(step: Int, notification: () -> Unit, storage: () -> Unit, skip: () -> Unit) {
+    val n = step == 1
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Card(Modifier.padding(24.dp), colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(if (n) Icons.Default.Notifications else Icons.Default.Folder, null, Modifier.size(56.dp), tint = Green)
+                Text(if (n) "Allow notifications" else "Allow storage access", fontSize = 20.sp, color = Dark)
+                Text(if (n) "PDM can notify you when downloads finish." else "Storage access is required to save downloaded files.", color = Muted)
+                Button(onClick = if (n) notification else storage, shape = RoundedCornerShape(24.dp)) { Text("Continue") }
+                TextButton(onClick = skip) { Text("Skip") }
+            }
+        }
+    }
+}
