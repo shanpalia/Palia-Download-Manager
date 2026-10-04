@@ -2,6 +2,7 @@ package com.shanpalia.pdm
 
 import android.content.Context
 import android.net.Uri
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,21 +71,34 @@ object PdmWebHistory {
 }
 
 @Composable
-fun RecentHistoryScreen(activity: android.content.ComponentActivity) {
+fun RecentHistoryScreen(activity: ComponentActivity) {
     var visits by remember { mutableStateOf(PdmWebHistory.read(activity)) }
 
-    LaunchedEffect(Unit) { visits = PdmWebHistory.read(activity) }
+    LaunchedEffect(Unit) {
+        visits = PdmWebHistory.read(activity)
+    }
 
     Column(Modifier.fillMaxSize().background(Color.White)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Language, null, tint = RecentGreen, modifier = Modifier.size(48.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Language,
+                null,
+                tint = RecentGreen,
+                modifier = Modifier.size(48.dp)
+            )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Recent", fontSize = 25.sp, color = RecentDark, fontWeight = FontWeight.Bold)
                 Text("Websites visited in PDM Browser", fontSize = 12.sp, color = RecentMuted)
             }
             if (visits.isNotEmpty()) {
-                IconButton(onClick = { PdmWebHistory.clear(activity); visits = emptyList() }) {
+                IconButton(onClick = {
+                    PdmWebHistory.clear(activity)
+                    visits = emptyList()
+                }) {
                     Icon(Icons.Default.Delete, "Clear recent", tint = RecentMuted)
                 }
             }
@@ -99,15 +113,41 @@ fun RecentHistoryScreen(activity: android.content.ComponentActivity) {
                 }
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(visits, key = { it.url }) { visit ->
                     val host = try { Uri.parse(visit.url).host ?: visit.url } catch (_: Throwable) { visit.url }
                     val time = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(visit.time))
-                    Row(Modifier.fillMaxWidth().background(RecentMint, RoundedCornerShape(16.dp)), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Language, null, tint = RecentGreen, modifier = Modifier.padding(14.dp).size(28.dp))
-                        Column(Modifier.weight(1f).padding(vertical = 12.dp, end = 12.dp)) {
-                            Text(visit.title.ifBlank { host }, fontWeight = FontWeight.SemiBold, color = RecentDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(host, color = RecentMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(
+                        Modifier.fillMaxWidth().background(RecentMint, RoundedCornerShape(16.dp)),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Language,
+                            null,
+                            tint = RecentGreen,
+                            modifier = Modifier.size(28.dp).padding(7.dp)
+                        )
+                        Column(
+                            Modifier.weight(1f).padding(vertical = 12.dp, end = 12.dp)
+                        ) {
+                            Text(
+                                visit.title.ifBlank { host },
+                                fontWeight = FontWeight.SemiBold,
+                                color = RecentDark,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                host,
+                                color = RecentMuted,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             Text(time, color = RecentMuted, fontSize = 11.sp)
                         }
                     }
